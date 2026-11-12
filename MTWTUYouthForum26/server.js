@@ -1,6 +1,7 @@
 // MTWTU Youth Forum 2026 — PLAI//OS
-// Zero-framework Node server: static files, public API, organizer admin,
-// Web Push and a Claude-powered concierge grounded only in the program data.
+// Zero-framework Node server: static files, public API, participant cabinets (personal codes),
+// parallel-session sign-up, Unionize seating, organizer admin, Web Push and a Claude concierge
+// that escalates questions it cannot answer to organizers.
 'use strict';
 const http = require('node:http');
 const fs = require('node:fs');
@@ -21,26 +22,35 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '';
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
-const MODE = process.env.SITE_MODE || 'preview'; // preview | live
+const MODE = process.env.SITE_MODE || 'preview';
+const SCHEMA = 2;
+const DAYS = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10'];
 
 /* ---------------- storage ---------------- */
 let store;
 function loadStore() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
-  if (fs.existsSync(STORE_FILE)) {
-    try { store = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8')); } catch { store = null; }
+  const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
+  if (fs.existsSync(STORE_FILE)) { try { store = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8')); } catch { store = null; } }
+  if (!store) store = { events: seed.events, announcements: [], subscriptions: [], vapid: null };
+  if ((store.schema || 1) < SCHEMA) {
+    // v2: program from the organizers' PDF, cabinets, Unionize, speakers, sponsors, questions
+    store.events = seed.events;
+    store.schema = SCHEMA;
   }
-  if (!store) {
-    const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
-    store = { events: seed.events, announcements: seed.announcements || [], subscriptions: [], vapid: null, updatedAt: new Date().toISOString() };
-  }
+  store.announcements ||= [];
   store.subscriptions ||= [];
+  store.participants ||= [];
+  store.questions ||= [];
+  store.knowledge ||= [];
+  store.speakers ||= seed.speakers || [];
+  store.sponsors ||= seed.sponsors || [];
+  store.unionize ||= seed.unionize;
+  store.transport ||= seed.transport;
+  store.settings = { ...seed.settings, ...(store.settings || {}) };
   if (webpush) {
     let pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
-    if (!pub || !priv) {
-      store.vapid ||= webpush.generateVAPIDKeys();
-      pub = store.vapid.publicKey; priv = store.vapid.privateKey;
-    }
+    if (!pub || !priv) { store.vapid ||= webpush.generateVAPIDKeys(); pub = store.vapid.publicKey; priv = store.vapid.privateKey; }
     webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:youth@mtwtu.org.ua', pub, priv);
     store.vapidPublicKey = pub;
   }
@@ -50,11 +60,7 @@ let saving = Promise.resolve();
 function saveStore() {
   store.updatedAt = new Date().toISOString();
   const snapshot = JSON.stringify(store, null, 1);
-  saving = saving.then(async () => {
-    const tmp = STORE_FILE + '.tmp';
-    await fsp.writeFile(tmp, snapshot);
-    await fsp.rename(tmp, STORE_FILE);
-  }).catch(err => console.error('[store]', err));
+  saving = saving.then(async () => { const tmp = STORE_FILE + '.tmp'; await fsp.writeFile(tmp, snapshot); await fsp.rename(tmp, STORE_FILE); }).catch(err => console.error('[store]', err));
   return saving;
 }
 
@@ -64,117 +70,237 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https://raw.githubusercontent.com https://storage.mtwtu.org.ua; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://player.vimeo.com; base-uri 'self'; form-action 'self'"
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://player.vimeo.com; base-uri 'self'; form-action 'self'"
 };
-function send(res, status, body, headers = {}) {
-  res.writeHead(status, { ...SECURITY_HEADERS, ...headers });
-  res.end(body);
-}
-const json = (res, status, obj) => send(res, status, JSON.stringify(obj), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+function send(res, status, body, headers = {}) { res.writeHead(status, { ...SECURITY_HEADERS, ...headers }); res.end(body); }
+const json = (res, status, obj, headers = {}) => send(res, status, JSON.stringify(obj), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
+const fail = (status, message) => Object.assign(new Error(message), { status });
 async function readBody(req, limit = 64 * 1024) {
   let size = 0; const chunks = [];
-  for await (const c of req) { size += c.length; if (size > limit) throw Object.assign(new Error('Завеликий запит'), { status: 413 }); chunks.push(c); }
+  for await (const c of req) { size += c.length; if (size > limit) throw fail(413, 'Завеликий запит'); chunks.push(c); }
   const raw = Buffer.concat(chunks).toString('utf8');
   if (!raw) return {};
-  try { return JSON.parse(raw); } catch { throw Object.assign(new Error('Некоректний JSON'), { status: 400 }); }
+  try { return JSON.parse(raw); } catch { throw fail(400, 'Некоректний JSON'); }
 }
 const str = (v, max) => String(v ?? '').trim().slice(0, max);
 const isTime = v => v === '' || v == null || /^([01]\d|2[0-3]):[0-5]\d$/.test(v);
-const DAYS = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10'];
-
-/* ---------------- sessions ---------------- */
-function sign(v) { return crypto.createHmac('sha256', SESSION_SECRET).update(v).digest('base64url'); }
-function makeSession() { const exp = String(Date.now() + 12 * 3600e3); return exp + '.' + sign(exp); }
-function isAdmin(req) {
-  const m = /(?:^|;\s*)plai_admin=([^;]+)/.exec(req.headers.cookie || '');
-  if (!m) return false;
-  const [exp, sig] = m[1].split('.');
-  if (!exp || !sig || Number(exp) < Date.now()) return false;
-  const good = sign(exp);
-  return good.length === sig.length && crypto.timingSafeEqual(Buffer.from(good), Buffer.from(sig));
-}
-const loginAttempts = new Map();
-function rateLimit(map, key, max, windowMs) {
-  const now = Date.now();
-  const list = (map.get(key) || []).filter(t => now - t < windowMs);
-  if (list.length >= max) { map.set(key, list); return false; }
-  list.push(now); map.set(key, list); return true;
-}
+const isUrl = v => !v || /^https:\/\/[^\s"'<>]+$/.test(v);
+const kyivTs = (date, time) => Date.parse(`${date}T${time || '00:00'}:00+02:00`);
 const ipOf = req => (req.headers['x-forwarded-for'] || '').split(',')[0].trim() || req.socket.remoteAddress || 'unknown';
+const limits = new Map();
+function rateLimit(key, max, windowMs) {
+  const now = Date.now(); const list = (limits.get(key) || []).filter(t => now - t < windowMs);
+  if (list.length >= max) { limits.set(key, list); return false; }
+  list.push(now); limits.set(key, list); return true;
+}
 
-/* ---------------- public data ---------------- */
-function publicPayload() {
+/* ---------------- sessions (admin + participant) ---------------- */
+const sign = v => crypto.createHmac('sha256', SESSION_SECRET).update(v).digest('base64url');
+function makeToken(kind, id, ttlMs) { const exp = String(Date.now() + ttlMs); return `${id}.${exp}.${sign(kind + ':' + id + ':' + exp)}`; }
+function readToken(req, cookie, kind) {
+  const m = new RegExp(`(?:^|;\\s*)${cookie}=([^;]+)`).exec(req.headers.cookie || '');
+  if (!m) return null;
+  const [id, exp, sig] = m[1].split('.');
+  if (!id || !exp || !sig || Number(exp) < Date.now()) return null;
+  const good = sign(kind + ':' + id + ':' + exp);
+  return good.length === sig.length && crypto.timingSafeEqual(Buffer.from(good), Buffer.from(sig)) ? id : null;
+}
+const isAdmin = req => readToken(req, 'plai_admin', 'admin') === 'admin';
+const meOf = req => { const id = readToken(req, 'plai_p', 'p'); return id ? store.participants.find(p => p.id === id) || null : null; };
+const secureFlag = req => ((req.headers['x-forwarded-proto'] || '').includes('https') ? '; Secure' : '');
+const cookie = (req, name, value, maxAge) => `${name}=${value}; HttpOnly; SameSite=Lax; Path=/; Max-Age=${maxAge}${secureFlag(req)}`;
+
+/* ---------------- participants ---------------- */
+const CODE_ABC = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newCode() {
+  for (;;) {
+    let c = 'PLAI-'; const b = crypto.randomBytes(4);
+    for (const x of b) c += CODE_ABC[x % CODE_ABC.length];
+    if (!store.participants.some(p => p.code === c)) return c;
+  }
+}
+const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^PLAI/, 'PLAI-');
+function groupKey(v) {
+  const s = String(v || '').toLowerCase();
+  if (store.transport.some(t => t.key === s)) return s;
+  if (/ізма|izma/.test(s)) return 'izmail';
+  if (/киї|київ|kyiv|kiev/.test(s)) return 'kyiv';
+  if (/одес|odes/.test(s)) return 'odesa';
+  return '';
+}
+function freeSeat(table, exceptId) {
+  const t = store.unionize.tables.find(x => x.n === table);
+  if (!t) return null;
+  const taken = new Set(store.participants.filter(p => p.table === table && p.id !== exceptId).map(p => p.seat));
+  for (let s = 1; s <= t.capacity; s++) if (!taken.has(s)) return s;
+  return null;
+}
+function placeAtTable(p, table) {
+  if (!table) { p.table = null; p.seat = null; return; }
+  const t = Number(table);
+  if (!store.unionize.tables.some(x => x.n === t)) throw fail(400, `Стола ${table} немає`);
+  if (p.table === t && p.seat) return;
+  const s = freeSeat(t, p.id);
+  if (!s) throw fail(409, `Стіл ${t} заповнений`);
+  p.table = t; p.seat = s;
+}
+function cleanParticipant(input, base) {
+  const p = base || { id: 'u' + crypto.randomBytes(5).toString('hex'), code: newCode(), sessions: {}, table: null, seat: null, createdAt: new Date().toISOString() };
+  if ('name' in input) p.name = str(input.name, 80);
+  if ('group' in input) p.group = groupKey(input.group);
+  if ('team' in input) p.team = str(input.team, 60);
+  if ('room' in input) p.room = str(input.room, 20);
+  if ('note' in input) p.note = str(input.note, 200);
+  if (!p.name) throw fail(400, 'Потрібне ім’я');
+  if ('table' in input) placeAtTable(p, input.table === '' || input.table == null ? null : input.table);
+  return p;
+}
+function parseCsv(text) {
+  const lines = String(text || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return [];
+  const sep = [';', '\t', ','].find(s => lines[0].includes(s)) || ';';
+  let rows = lines.map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
+  const head = rows[0].map(h => h.toLowerCase());
+  const hasHead = head.some(h => /ім|name|груп|стіл|команд/.test(h));
+  const idx = (re, d) => { const i = head.findIndex(h => re.test(h)); return hasHead ? i : d; };
+  const cols = { name: idx(/ім|піб|name/, 0), group: idx(/груп|доїзд|місто|group/, 1), table: idx(/стіл|table/, 2), team: idx(/команд|team/, 3), room: idx(/кімн|room/, 4) };
+  if (hasHead) rows = rows.slice(1);
+  return rows.map(r => Object.fromEntries(Object.entries(cols).filter(([, i]) => i >= 0 && r[i] != null).map(([k, i]) => [k, r[i]])));
+}
+const parallelSlots = () => {
+  const map = new Map();
+  for (const e of store.events) if (e.track === 'parallel' && e.published !== false && e.start) {
+    const k = e.date + ' ' + e.start; if (!map.has(k)) map.set(k, []); map.get(k).push(e);
+  }
+  return map;
+};
+const sessionCounts = () => {
+  const c = {};
+  for (const p of store.participants) for (const id of Object.values(p.sessions || {})) c[id] = (c[id] || 0) + 1;
+  return c;
+};
+function myPayload(p) {
+  const neighbours = p.table ? store.participants.filter(x => x.table === p.table && x.id !== p.id).sort((a, b) => a.seat - b.seat).map(x => ({ name: x.name, seat: x.seat })) : [];
+  const table = p.table ? store.unionize.tables.find(t => t.n === p.table) : null;
   return {
-    updatedAt: store.updatedAt,
-    mode: MODE,
-    events: store.events.filter(e => e.published !== false),
-    announcements: [...store.announcements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-    webPushAvailable: Boolean(webpush && store.vapidPublicKey),
-    vapidPublicKey: store.vapidPublicKey || '',
-    ai: Boolean(ANTHROPIC_API_KEY)
+    id: p.id, name: p.name, group: p.group, team: p.team, room: p.room, sessions: p.sessions || {},
+    table: p.table, seat: p.seat, tableInfo: table, neighbours,
+    transport: store.transport.find(t => t.key === p.group) || null,
+    questions: store.questions.filter(q => q.participantId === p.id).map(publicQuestion)
   };
 }
 
+/* ---------------- questions to organizers ---------------- */
+const publicQuestion = q => ({ id: q.id, text: q.text, status: q.status, answer: q.final || null, createdAt: q.createdAt, answeredAt: q.answeredAt || null });
+async function createQuestion({ text, participant, asker, draft }) {
+  const q = { id: 'q' + crypto.randomBytes(5).toString('hex'), text: str(text, 600), participantId: participant?.id || null, participantName: participant?.name || '', asker: str(asker, 64) || null, draft: str(draft, 2000), status: 'open', createdAt: new Date().toISOString() };
+  store.questions.unshift(q); await saveStore();
+  broadcast({ title: 'Нове питання від учасника', body: q.text.slice(0, 160), url: '/#/admin', tag: q.id }, s => s.admin);
+  return q;
+}
+async function claudeOnce(system, user, maxTokens = 500) {
+  if (!ANTHROPIC_API_KEY) return null;
+  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }) }).catch(() => null);
+  if (!r || !r.ok) return null;
+  const d = await r.json().catch(() => null);
+  return d?.content?.map(c => c.text || '').join('').trim() || null;
+}
+
 /* ---------------- push ---------------- */
-async function broadcast(payload) {
+async function broadcast(payload, filter = () => true) {
   if (!webpush) return { sent: 0, failed: 0 };
   let sent = 0, failed = 0; const dead = [];
-  await Promise.all(store.subscriptions.map(async sub => {
-    try { await webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 3600 }); sent++; }
+  await Promise.all(store.subscriptions.filter(filter).map(async sub => {
+    try { await webpush.sendNotification({ endpoint: sub.endpoint, keys: sub.keys }, JSON.stringify(payload), { TTL: 3600 }); sent++; }
     catch (err) { failed++; if (err.statusCode === 404 || err.statusCode === 410) dead.push(sub.endpoint); }
   }));
   if (dead.length) { store.subscriptions = store.subscriptions.filter(s => !dead.includes(s.endpoint)); saveStore(); }
   return { sent, failed };
 }
 
+/* ---------------- public payload ---------------- */
+function publicPayload() {
+  const tablesTaken = {};
+  for (const p of store.participants) if (p.table) tablesTaken[p.table] = (tablesTaken[p.table] || 0) + 1;
+  return {
+    updatedAt: store.updatedAt, mode: MODE,
+    events: store.events.filter(e => e.published !== false),
+    announcements: [...store.announcements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+    sessionCounts: sessionCounts(),
+    unionize: { tables: store.unionize.tables.map(t => ({ ...t, taken: tablesTaken[t.n] || 0 })) },
+    speakers: store.speakers, sponsors: store.sponsors, transport: store.transport, settings: store.settings,
+    webPushAvailable: Boolean(webpush && store.vapidPublicKey), vapidPublicKey: store.vapidPublicKey || '',
+    ai: Boolean(ANTHROPIC_API_KEY)
+  };
+}
+
 /* ---------------- Claude concierge ---------------- */
 const FACTS = `
-ЗАГАЛЬНЕ: MTWTU Youth Forum 2026 — форум Молодіжної ради ПРМТУ (Профспілка робітників морського транспорту України). 7–10 грудня 2026, гірськолижний комплекс «Плай» (Плав'я, Карпати). Офіційний сайт комплексу з інтерактивною картою: https://play-karpaty.com/
-ЛОКАЦІЇ ЗА ПРОГРАМОЮ: Великий зал — відкриття, Unionize та загальні сесії. Малий зал — паралельні тренінги. Ресторан — основні прийоми їжі. Боулінг — вечірня активність 8 грудня. Рецепція/готель — прибуття та поселення. Екоферма — екскурсія 9 грудня; місце збору уточнюється.
-ТРАНСФЕР (попередньо): 06 грудня о 22:30 — попередній виїзд автобусом з Одеси, точка збору не підтверджена. 10 грудня о 12:30 — попередній виїзд з «Плаю». 11 грудня близько 05:00 — попереднє прибуття до Одеси, може змінитися. Організований трансфер зі Львова чи Києва НЕ підтверджено — лише самостійна поїздка.
-НЕ ПІДТВЕРДЖЕНО: контакт координатора, перелік партнерів, посилання на сторінки спільнот, схема укриттів/евакуації та порядок дій під час тривоги — ці дані з'являться лише після офіційного підтвердження організаторами.
-СПІКЕРИ: Олег Григорюк — Голова ПРМТУ (відкриття). Інші імена — у полі speakerNames подій, попередньо.
+ЗАГАЛЬНЕ: MTWTU Youth Forum 2026 — форум Молодіжної ради ПРМТУ (Профспілка робітників морського транспорту України). 7–10 грудня 2026, гірськолижний комплекс «Плай», с. Плав'я, Львівська область. Сайт комплексу: https://play-karpaty.com/
+КЕРІВНИК: Олег Ігоревич Григорюк — Голова ПРМТУ.
+ЛОКАЦІЇ ЗА ПРОГРАМОЮ: Великий зал, Малий зал, Ресторан, Боулінг, Рецепція/готель, Приватний event space. Інших подробиць про розташування на території немає.
+ПАРАЛЕЛЬНІ СЕСІЇ: 8.12 о 12:00 — Медіація (Малий зал) або CV (Великий зал); 9.12 о 10:00 — Історія профспілок (Малий зал) або Документи, кейси (Великий зал). По 25 місць. Учасник записується сам у розділі «Мій форум» (вхід за персональним кодом), запис відкритий до початку сесії; місця обмежені, краще записатися швидше.
+UNIONIZE: 9 столів. Стіл 1 — керівництво та гості (8 місць), столи 2–9 — до 6 учасників, за кожним ведучий. Своє місце й сусідів учасник бачить у «Мій форум».
+ДОЇЗД: групи — Ізмаїл → Одеса → Плай (автобус, пересадка в Одесі), Одеса → Плай (спільний автобус, виїзд попередньо 6.12 о 22:30), Київ → Плай (автомобіль). Виїзд з «Плаю» 10.12 о 12:30 (обід з собою), прибуття до Одеси 11.12 близько 05:00 — попередньо.
+ПРО МОЛОДІЖНУ РАДУ: молодіжний рух ПРМТУ з 2002 року; включеність в ITF/ETF; напрями Sail Smart, MTWTU LAW HUB, форуми й Summer Leadership Camp, Union Quiz, Union Sport; присутність в Одесі, Ізмаїлі, Чорноморську. Instagram: https://www.instagram.com/mtwtuyouth/
 `;
-function systemPrompt() {
-  const program = store.events.filter(e => e.published !== false).map(e => ({ id: e.id, date: e.date, start: e.start, end: e.end, title: e.title, venue: e.venue, status: e.status, track: e.track, details: e.details, teaser: e.teaser, why: e.why, speakers: e.speakerNames }));
+function systemPrompt(me) {
+  const program = store.events.filter(e => e.published !== false).map(e => ({ id: e.id, date: e.date, start: e.start, end: e.end, title: e.title, venue: e.venue, status: e.status, track: e.track, capacity: e.capacity, details: e.details, teaser: e.teaser, why: e.why, speakers: e.speakerNames }));
   const ann = store.announcements.slice(0, 15).map(a => ({ title: a.title, text: a.text, kind: a.kind, createdAt: a.createdAt }));
-  return `Ти — «Claude у Плаї», цифровий консьєрж MTWTU Youth Forum 2026. Відповідай українською, тепло, коротко (до 120 слів), по суті.
+  const kb = store.knowledge.slice(0, 80).map(k => ({ q: k.q, a: k.a }));
+  const s = store.settings;
+  const extra = [s.coordinator && `Контакт координатора: ${s.coordinator}`, s.telegramUrl && `Telegram-канал форуму: ${s.telegramUrl}`, s.driveUrl && `Фото форуму: ${s.driveUrl}`].filter(Boolean).join('\n');
+  const transport = store.transport.map(t => `${t.title}: ${t.note}${t.meet ? ' Збір: ' + t.meet : ' Точка і час збору уточнюються.'}`).join('\n');
+  const speakers = store.speakers.map(p => [p.name, p.role, p.org].filter(Boolean).join(', ')).join('; ');
+  const sponsors = store.sponsors.map(p => `${p.name}: ${p.text}`).join('; ');
+  let personal = 'Користувач не увійшов у «Мій форум».';
+  if (me) {
+    const sess = Object.values(me.sessions || {}).map(id => store.events.find(e => e.id === id)?.title).filter(Boolean);
+    const tr = store.transport.find(t => t.key === me.group);
+    personal = `Користувач увійшов: ${me.name}. Група доїзду: ${tr ? tr.title : 'не вказана'}. Записаний на сесії: ${sess.join(', ') || 'ще ні'}. Unionize: ${me.table ? `стіл ${me.table}, місце ${me.seat}` : 'місце ще не призначене'}.${me.team ? ' Команда: ' + me.team + '.' : ''}${me.room ? ' Кімната: ' + me.room + '.' : ''}`;
+  }
+  return `Ти — «Claude у Плаї», цифровий консьєрж MTWTU Youth Forum 2026. Відповідай українською, тепло, коротко (до 110 слів), без емодзі.
 
 ЖОРСТКІ ПРАВИЛА:
-1. Використовуй ЛИШЕ факти з блоків ПРОГРАМА, ОГОЛОШЕННЯ та ФАКТИ нижче. Нічого не вигадуй: ні часу, ні місць, ні імен, ні правил ігор, ні контактів.
-2. Якщо інформації немає або вона позначена як попередня/уточнюється — прямо скажи це і порадь стежити за розділом «Оголошення».
-3. Статус "tentative" = попередньо. Завжди згадуй це, коли називаєш час чи місце.
-4. Коли згадуєш конкретну подію, додай її маркер у форматі [[id]] (наприклад [[088]]) — сайт перетворить його на картку. Не більше 4 маркерів.
-5. Питання поза темою форуму ввічливо поверни до форуму. Не давай медичних, юридичних чи безпекових інструкцій — для тривог і укриттів відсилай до офіційних вказівок організаторів і адміністрації комплексу.
+1. Використовуй ЛИШЕ факти з блоків нижче. Не додавай від себе жодних деталей: місць, часу, імен, правил, описів території чи атмосфери.
+2. Статус "tentative" = попередньо — згадуй це, коли називаєш час чи місце.
+3. Коли згадуєш подію, додай її маркер [[id]] (наприклад [[088]]), не більше 4.
+4. Якщо точної відповіді в даних немає або вона неповна — не вгадуй. Скажи одним реченням, що передаєш питання організаторам і відповідь прийде сюди, і додай у самому кінці маркер [[ORG]].
+5. Питання поза темою форуму ввічливо поверни до форуму (без [[ORG]]). Медичних, юридичних і безпекових інструкцій не давай; щодо тривог і укриттів — лише офіційні вказівки організаторів і адміністрації комплексу.
 6. Поточний київський час: ${new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', dateStyle: 'full', timeStyle: 'short' }).format(new Date())}.
 
-ПРОГРАМА (JSON):
-${JSON.stringify(program)}
+ПРО КОРИСТУВАЧА: ${personal}
 
-ОГОЛОШЕННЯ ОРГАНІЗАТОРІВ (JSON, найновіші першими):
-${JSON.stringify(ann)}
+ПРОГРАМА (JSON): ${JSON.stringify(program)}
+
+ОГОЛОШЕННЯ ОРГАНІЗАТОРІВ (найновіші першими): ${JSON.stringify(ann)}
+
+ВІДПОВІДІ ОРГАНІЗАТОРІВ НА ПИТАННЯ УЧАСНИКІВ (найточніше джерело): ${JSON.stringify(kb)}
+
+ДОЇЗД ЗА ГРУПАМИ:
+${transport}
+
+СПІКЕРИ: ${speakers || '—'}
+СПОНСОРИ: ${sponsors || 'ще не опубліковані'}
+${extra}
 
 ФАКТИ:
 ${FACTS}`;
 }
-const askAttempts = new Map();
 async function handleAsk(req, res) {
   if (!ANTHROPIC_API_KEY) return json(res, 503, { error: 'AI вимкнено', fallback: true });
-  if (!rateLimit(askAttempts, ipOf(req), 25, 10 * 60e3)) return json(res, 429, { error: 'Забагато запитань. Спробуй за кілька хвилин.' });
+  if (!rateLimit('ask:' + ipOf(req), 25, 10 * 60e3)) return json(res, 429, { error: 'Забагато запитань. Спробуй за кілька хвилин.' });
   const body = await readBody(req, 32 * 1024);
+  const me = meOf(req);
   const history = Array.isArray(body.history) ? body.history.slice(-8) : [];
-  const messages = history
-    .filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
-    .map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
+  const messages = history.filter(m => (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim()).map(m => ({ role: m.role, content: m.content.slice(0, 2000) }));
   const q = str(body.question, 600);
   if (!q) return json(res, 400, { error: 'Порожнє запитання' });
   messages.push({ role: 'user', content: q });
   while (messages.length && messages[0].role !== 'user') messages.shift();
-
   const upstream = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
-    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 700, stream: true, system: systemPrompt(), messages })
+    method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 700, stream: true, system: systemPrompt(me), messages })
   }).catch(() => null);
   if (!upstream || !upstream.ok || !upstream.body) {
     const detail = upstream ? await upstream.text().catch(() => '') : '';
@@ -182,7 +308,7 @@ async function handleAsk(req, res) {
     return json(res, 502, { error: 'Claude зараз недоступний', fallback: true });
   }
   res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', Connection: 'keep-alive' });
-  const decoder = new TextDecoder(); let buf = '';
+  const decoder = new TextDecoder(); let buf = '', full = '';
   try {
     for await (const chunk of upstream.body) {
       buf += decoder.decode(chunk, { stream: true });
@@ -192,29 +318,44 @@ async function handleAsk(req, res) {
         const line = block.split('\n').find(l => l.startsWith('data:'));
         if (!line) continue;
         let evt; try { evt = JSON.parse(line.slice(5)); } catch { continue; }
-        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') res.write(`data: ${JSON.stringify({ t: evt.delta.text })}\n\n`);
+        if (evt.type === 'content_block_delta' && evt.delta?.type === 'text_delta') { full += evt.delta.text; res.write(`data: ${JSON.stringify({ t: evt.delta.text })}\n\n`); }
         if (evt.type === 'error') res.write(`data: ${JSON.stringify({ error: 'Помилка відповіді' })}\n\n`);
       }
     }
   } catch (err) { console.error('[claude stream]', err.message); }
+  if (full.includes('[[ORG]]') && rateLimit('q:' + ipOf(req), 15, 60 * 60e3)) {
+    const qq = await createQuestion({ text: q, participant: me, asker: body.asker, draft: full });
+    res.write(`data: ${JSON.stringify({ escalated: qq.id })}\n\n`);
+  }
   res.write('data: {"done":true}\n\n');
   res.end();
 }
 
-/* ---------------- event validation ---------------- */
-const EVENT_FIELDS = { title: 130, venue: 90, details: 600, posterTitle: 140, teaser: 650, why: 500, speakerNames: 220, category: 40 };
+/* ---------------- validation ---------------- */
+const EVENT_FIELDS = { title: 130, venue: 90, details: 600, posterTitle: 140, teaser: 650, why: 500, speakerNames: 260, category: 40 };
 function cleanEvent(input, base = {}) {
   const e = { ...base };
   for (const [k, max] of Object.entries(EVENT_FIELDS)) if (k in input) e[k] = str(input[k], max);
-  if ('date' in input) { if (!DAYS.includes(input.date)) throw Object.assign(new Error('Невірна дата'), { status: 400 }); e.date = input.date; }
-  for (const k of ['start', 'end']) if (k in input) { if (!isTime(input[k])) throw Object.assign(new Error('Невірний час'), { status: 400 }); e[k] = input[k] || null; }
+  if ('date' in input) { if (!DAYS.includes(input.date)) throw fail(400, 'Невірна дата'); e.date = input.date; }
+  for (const k of ['start', 'end']) if (k in input) { if (!isTime(input[k])) throw fail(400, 'Невірний час'); e[k] = input[k] || null; }
   if ('status' in input) e.status = ['tentative', 'confirmed', 'canceled'].includes(input.status) ? input.status : 'tentative';
   if ('track' in input) e.track = input.track === 'parallel' ? 'parallel' : 'all';
+  if ('capacity' in input) e.capacity = input.capacity ? Math.max(1, Math.min(200, Number(input.capacity) || 0)) : undefined;
+  if ('link' in input) { if (!isUrl(input.link)) throw fail(400, 'Посилання має починатися з https://'); e.link = str(input.link, 300); }
   if ('published' in input) e.published = Boolean(input.published);
   if ('feature' in input) e.feature = Boolean(input.feature);
-  if (!e.title) throw Object.assign(new Error('Потрібна назва'), { status: 400 });
-  if (!e.date) throw Object.assign(new Error('Потрібна дата'), { status: 400 });
+  if (!e.title) throw fail(400, 'Потрібна назва');
+  if (!e.date) throw fail(400, 'Потрібна дата');
   return e;
+}
+function cleanPerson(input, base, kind) {
+  const x = { ...base };
+  x.name = str(input.name, 100); if (!x.name) throw fail(400, 'Потрібна назва');
+  for (const k of ['photo', 'logo', 'url']) if (k in input) { if (!isUrl(input[k])) throw fail(400, 'Посилання на фото/лого має починатися з https://'); x[k] = str(input[k], 500); }
+  if (kind === 'speaker') { x.role = str(input.role, 140); x.org = str(input.org, 100); x.events = Array.isArray(input.events) ? input.events.filter(id => store.events.some(e => e.id === id)) : (x.events || []); }
+  else x.text = str(input.text, 300);
+  x.order = Number(input.order) || 0;
+  return x;
 }
 
 /* ---------------- router ---------------- */
@@ -224,10 +365,56 @@ async function api(req, res, url) {
   if (p === '/api/ask' && m === 'POST') return handleAsk(req, res);
   if (p === '/api/health') return json(res, 200, { ok: true });
 
+  /* participant */
+  if (p === '/api/me/login' && m === 'POST') {
+    if (!rateLimit('login:' + ipOf(req), 20, 15 * 60e3)) throw fail(429, 'Забагато спроб. Зачекайте 15 хвилин.');
+    const { code } = await readBody(req);
+    const me = store.participants.find(x => x.code === normCode(code));
+    if (!me) throw fail(401, 'Код не знайдено. Перевірте його або зверніться до організаторів.');
+    me.lastLogin = new Date().toISOString(); saveStore();
+    return json(res, 200, { ok: true, me: myPayload(me) }, { 'Set-Cookie': cookie(req, 'plai_p', makeToken('p', me.id, 45 * 864e5), 45 * 86400) });
+  }
+  if (p === '/api/me/logout' && m === 'POST') return json(res, 200, { ok: true }, { 'Set-Cookie': cookie(req, 'plai_p', '', 0) });
+  if (p === '/api/me' && m === 'GET') { const me = meOf(req); return json(res, 200, { me: me ? myPayload(me) : null }); }
+  if (p === '/api/me/session' && m === 'POST') {
+    const me = meOf(req); if (!me) throw fail(401, 'Увійдіть за персональним кодом');
+    const { slot, eventId } = await readBody(req);
+    const slots = parallelSlots(); const group = slots.get(slot);
+    if (!group) throw fail(400, 'Невідома сесія');
+    const startTs = kyivTs(...slot.split(' '));
+    if (Date.now() >= startTs) throw fail(409, 'Запис на цю сесію вже закрито');
+    me.sessions ||= {};
+    if (!eventId) { delete me.sessions[slot]; await saveStore(); return json(res, 200, { ok: true, me: myPayload(me), sessionCounts: sessionCounts() }); }
+    const ev = group.find(e => e.id === eventId); if (!ev) throw fail(400, 'Невідома сесія');
+    const counts = sessionCounts();
+    if (me.sessions[slot] !== eventId && ev.capacity && (counts[eventId] || 0) >= ev.capacity) throw fail(409, `На «${ev.title}» місць уже немає — оберіть іншу сесію`);
+    me.sessions[slot] = eventId; await saveStore();
+    return json(res, 200, { ok: true, me: myPayload(me), sessionCounts: sessionCounts() });
+  }
+
+  /* questions */
+  if (p === '/api/questions' && m === 'POST') {
+    if (!rateLimit('q:' + ipOf(req), 15, 60 * 60e3)) throw fail(429, 'Забагато питань. Спробуйте пізніше.');
+    const b = await readBody(req);
+    if (!str(b.text, 600)) throw fail(400, 'Порожнє питання');
+    const q = await createQuestion({ text: b.text, participant: meOf(req), asker: b.asker, draft: b.draft });
+    return json(res, 200, { ok: true, question: publicQuestion(q) });
+  }
+  if (p === '/api/questions/mine' && m === 'GET') {
+    const asker = str(url.searchParams.get('asker'), 64); const me = meOf(req);
+    const list = store.questions.filter(q => (me && q.participantId === me.id) || (asker && q.asker === asker));
+    return json(res, 200, { questions: list.map(publicQuestion) });
+  }
+
+  /* push */
   if (p === '/api/push/subscribe' && m === 'POST') {
     const sub = await readBody(req);
-    if (!sub?.endpoint || !/^https:\/\//.test(sub.endpoint) || !sub.keys?.p256dh || !sub.keys?.auth) return json(res, 400, { error: 'Невірна підписка' });
-    if (!store.subscriptions.some(s => s.endpoint === sub.endpoint)) { store.subscriptions.push({ endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth } }); saveStore(); }
+    if (!sub?.endpoint || !/^https:\/\//.test(sub.endpoint) || !sub.keys?.p256dh || !sub.keys?.auth) throw fail(400, 'Невірна підписка');
+    const me = meOf(req);
+    const rec = { endpoint: sub.endpoint, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, participantId: me?.id || null, asker: str(sub.asker, 64) || null, admin: Boolean(sub.admin && isAdmin(req)) };
+    const i = store.subscriptions.findIndex(s => s.endpoint === sub.endpoint);
+    if (i >= 0) store.subscriptions[i] = { ...store.subscriptions[i], ...rec, admin: rec.admin || store.subscriptions[i].admin }; else store.subscriptions.push(rec);
+    saveStore();
     return json(res, 200, { ok: true });
   }
   if (p === '/api/push/unsubscribe' && m === 'POST') {
@@ -236,42 +423,121 @@ async function api(req, res, url) {
     return json(res, 200, { ok: true });
   }
 
+  /* admin auth */
   if (p === '/api/admin/me') return json(res, 200, { admin: isAdmin(req), enabled: Boolean(ADMIN_PASSWORD) });
   if (p === '/api/admin/login' && m === 'POST') {
-    if (!ADMIN_PASSWORD) return json(res, 503, { error: 'Задайте ADMIN_PASSWORD на сервері' });
-    if (!rateLimit(loginAttempts, ipOf(req), 8, 15 * 60e3)) return json(res, 429, { error: 'Забагато спроб. Зачекайте 15 хвилин.' });
+    if (!ADMIN_PASSWORD) throw fail(503, 'Задайте ADMIN_PASSWORD на сервері');
+    if (!rateLimit('admin:' + ipOf(req), 8, 15 * 60e3)) throw fail(429, 'Забагато спроб. Зачекайте 15 хвилин.');
     const { password } = await readBody(req);
-    const a = crypto.createHash('sha256').update(String(password || '')).digest();
-    const b = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest();
-    if (!crypto.timingSafeEqual(a, b)) return json(res, 401, { error: 'Невірний пароль' });
-    const secure = (req.headers['x-forwarded-proto'] || '').includes('https') ? '; Secure' : '';
-    return send(res, 200, '{"ok":true}', { 'Content-Type': 'application/json', 'Set-Cookie': `plai_admin=${makeSession()}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secure}` });
+    const a = crypto.createHash('sha256').update(String(password || '')).digest(), b = crypto.createHash('sha256').update(ADMIN_PASSWORD).digest();
+    if (!crypto.timingSafeEqual(a, b)) throw fail(401, 'Невірний пароль');
+    return json(res, 200, { ok: true }, { 'Set-Cookie': `plai_admin=${makeToken('admin', 'admin', 12 * 3600e3)}; HttpOnly; SameSite=Strict; Path=/; Max-Age=43200${secureFlag(req)}` });
   }
-  if (p === '/api/admin/logout' && m === 'POST') return send(res, 200, '{"ok":true}', { 'Content-Type': 'application/json', 'Set-Cookie': 'plai_admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
+  if (p === '/api/admin/logout' && m === 'POST') return json(res, 200, { ok: true }, { 'Set-Cookie': 'plai_admin=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
 
   if (p.startsWith('/api/admin/')) {
-    if (!isAdmin(req)) return json(res, 401, { error: 'Потрібен вхід' });
-    if (p === '/api/admin/state' && m === 'GET') return json(res, 200, { events: store.events, announcements: store.announcements, subscriberCount: store.subscriptions.length });
-    if (p === '/api/admin/announcements' && m === 'POST') {
-      const b = await readBody(req);
-      const a = { id: crypto.randomUUID(), title: str(b.title, 90), text: str(b.text, 650), kind: ['info', 'important', 'urgent'].includes(b.kind) ? b.kind : 'info', createdAt: new Date().toISOString() };
-      if (!a.title || !a.text) return json(res, 400, { error: 'Заповніть заголовок і текст' });
-      store.announcements.unshift(a); await saveStore();
-      const push = b.push ? await broadcast({ title: a.title, body: a.text.slice(0, 180), url: '/#/updates', tag: a.id }) : null;
-      return json(res, 200, { ok: true, announcement: a, push });
+    if (!isAdmin(req)) throw fail(401, 'Потрібен вхід');
+    const body = m === 'GET' || m === 'DELETE' ? {} : await readBody(req, 512 * 1024);
+    const seg = p.slice('/api/admin/'.length).split('/');
+    const [col, id, action] = seg;
+
+    if (col === 'state' && m === 'GET') return json(res, 200, {
+      events: store.events, announcements: store.announcements, subscriberCount: store.subscriptions.length,
+      participants: store.participants, questions: store.questions, knowledge: store.knowledge,
+      speakers: store.speakers, sponsors: store.sponsors, unionize: store.unionize, transport: store.transport, settings: store.settings, sessionCounts: sessionCounts()
+    });
+
+    if (col === 'announcements') {
+      if (m === 'POST' && !id) {
+        const a = { id: crypto.randomUUID(), title: str(body.title, 90), text: str(body.text, 650), kind: ['info', 'important', 'urgent'].includes(body.kind) ? body.kind : 'info', createdAt: new Date().toISOString() };
+        if (!a.title || !a.text) throw fail(400, 'Заповніть заголовок і текст');
+        store.announcements.unshift(a); await saveStore();
+        const push = body.push ? await broadcast({ title: a.title, body: a.text.slice(0, 180), url: '/#/updates', tag: a.id }) : null;
+        return json(res, 200, { ok: true, announcement: a, push });
+      }
+      if (m === 'DELETE' && id) { store.announcements = store.announcements.filter(a => a.id !== id); await saveStore(); return json(res, 200, { ok: true }); }
     }
-    const delA = /^\/api\/admin\/announcements\/([\w-]+)$/.exec(p);
-    if (delA && m === 'DELETE') { store.announcements = store.announcements.filter(a => a.id !== delA[1]); await saveStore(); return json(res, 200, { ok: true }); }
-    if (p === '/api/admin/events' && m === 'POST') {
-      const e = cleanEvent(await readBody(req), { id: 'x' + crypto.randomBytes(3).toString('hex'), status: 'tentative', track: 'all', published: true });
-      store.events.push(e); await saveStore(); return json(res, 200, { ok: true, event: e });
-    }
-    const ev = /^\/api\/admin\/events\/([\w-]+)$/.exec(p);
-    if (ev) {
-      const i = store.events.findIndex(e => e.id === ev[1]);
-      if (i < 0) return json(res, 404, { error: 'Подію не знайдено' });
-      if (m === 'PUT') { store.events[i] = cleanEvent(await readBody(req), store.events[i]); await saveStore(); return json(res, 200, { ok: true, event: store.events[i] }); }
+
+    if (col === 'events') {
+      if (m === 'POST' && !id) { const e = cleanEvent(body, { id: 'x' + crypto.randomBytes(3).toString('hex'), status: 'tentative', track: 'all', published: true }); store.events.push(e); await saveStore(); return json(res, 200, { ok: true, event: e }); }
+      const i = store.events.findIndex(e => e.id === id);
+      if (i < 0) throw fail(404, 'Подію не знайдено');
+      if (m === 'PUT') { store.events[i] = cleanEvent(body, store.events[i]); await saveStore(); return json(res, 200, { ok: true, event: store.events[i] }); }
       if (m === 'DELETE') { store.events.splice(i, 1); await saveStore(); return json(res, 200, { ok: true }); }
+    }
+
+    if (col === 'participants') {
+      if (id === 'import' && m === 'POST') {
+        const rows = parseCsv(body.csv); const added = [], errors = [];
+        for (const [n, r] of rows.entries()) {
+          try {
+            const exists = store.participants.find(x => x.name.toLowerCase() === String(r.name || '').trim().toLowerCase());
+            const pp = cleanParticipant(r, exists);
+            if (!exists) store.participants.push(pp);
+            added.push(pp.name);
+          } catch (e) { errors.push(`Рядок ${n + 1}: ${e.message}`); }
+        }
+        await saveStore();
+        return json(res, 200, { ok: true, added: added.length, errors });
+      }
+      if (m === 'POST' && !id) { const pp = cleanParticipant(body); store.participants.push(pp); await saveStore(); return json(res, 200, { ok: true, participant: pp }); }
+      const pp = store.participants.find(x => x.id === id);
+      if (!pp) throw fail(404, 'Учасника не знайдено');
+      if (action === 'code' && m === 'POST') { pp.code = newCode(); await saveStore(); return json(res, 200, { ok: true, participant: pp }); }
+      if (m === 'PUT') {
+        cleanParticipant(body, pp);
+        if (body.sessions && typeof body.sessions === 'object') {
+          const slots = parallelSlots(); pp.sessions = {};
+          for (const [slot, ev] of Object.entries(body.sessions)) if (ev && slots.get(slot)?.some(e => e.id === ev)) pp.sessions[slot] = ev;
+        }
+        await saveStore(); return json(res, 200, { ok: true, participant: pp });
+      }
+      if (m === 'DELETE') { store.participants = store.participants.filter(x => x.id !== id); await saveStore(); return json(res, 200, { ok: true }); }
+    }
+
+    if (col === 'unionize' && m === 'PUT') {
+      for (const t of store.unionize.tables) {
+        const inp = (body.tables || []).find(x => Number(x.n) === t.n); if (!inp) continue;
+        t.host = str(inp.host, 80); t.label = str(inp.label, 60);
+        t.capacity = Math.max(1, Math.min(12, Number(inp.capacity) || t.capacity));
+      }
+      await saveStore(); return json(res, 200, { ok: true, unionize: store.unionize });
+    }
+
+    if (col === 'questions') {
+      const q = store.questions.find(x => x.id === id);
+      if (!q) throw fail(404, 'Питання не знайдено');
+      if (action === 'answer' && m === 'POST') {
+        const raw = str(body.answer, 1500); if (!raw) throw fail(400, 'Напишіть відповідь');
+        let final = raw;
+        if (body.polish !== false) {
+          const polished = await claudeOnce('Ти редагуєш відповідь організаторів молодіжного форуму для учасника. Перепиши відповідь організатора українською: дружньо, коротко, чітко, без емодзі. Не додавай жодних фактів, яких немає у відповіді організатора. Поверни лише текст відповіді.', `Питання учасника: ${q.text}\n\nВідповідь організатора: ${raw}`);
+          if (polished) final = polished;
+        }
+        Object.assign(q, { status: 'answered', raw, final, answeredAt: new Date().toISOString() });
+        if (body.addToKnowledge !== false) store.knowledge.unshift({ id: q.id, q: q.text, a: final, createdAt: q.answeredAt });
+        await saveStore();
+        const push = await broadcast({ title: 'Організатори відповіли на ваше питання', body: final.slice(0, 160), url: '/#/ask', tag: q.id }, s => (q.participantId && s.participantId === q.participantId) || (q.asker && s.asker === q.asker));
+        return json(res, 200, { ok: true, question: q, push });
+      }
+      if (m === 'DELETE') { store.questions = store.questions.filter(x => x.id !== id); await saveStore(); return json(res, 200, { ok: true }); }
+    }
+    if (col === 'knowledge' && m === 'DELETE' && id) { store.knowledge = store.knowledge.filter(k => k.id !== id); await saveStore(); return json(res, 200, { ok: true }); }
+
+    if (col === 'speakers' || col === 'sponsors') {
+      const kind = col === 'speakers' ? 'speaker' : 'sponsor';
+      if (m === 'POST' && !id) { const x = cleanPerson(body, { id: kind.slice(0, 2) + crypto.randomBytes(3).toString('hex') }, kind); store[col].push(x); await saveStore(); return json(res, 200, { ok: true, item: x }); }
+      const i = store[col].findIndex(x => x.id === id);
+      if (i < 0) throw fail(404, 'Не знайдено');
+      if (m === 'PUT') { store[col][i] = cleanPerson(body, store[col][i], kind); await saveStore(); return json(res, 200, { ok: true, item: store[col][i] }); }
+      if (m === 'DELETE') { store[col].splice(i, 1); await saveStore(); return json(res, 200, { ok: true }); }
+    }
+
+    if (col === 'settings' && m === 'PUT') {
+      for (const k of ['driveUrl', 'telegramUrl']) if (k in body) { if (!isUrl(body[k])) throw fail(400, 'Посилання має починатися з https://'); store.settings[k] = str(body[k], 300); }
+      for (const k of ['participantsLabel', 'coordinator']) if (k in body) store.settings[k] = str(body[k], 200);
+      if (Array.isArray(body.transport)) for (const t of store.transport) { const inp = body.transport.find(x => x.key === t.key); if (inp) { t.meet = str(inp.meet, 300); t.note = str(inp.note, 300) || t.note; } }
+      await saveStore(); return json(res, 200, { ok: true, settings: store.settings, transport: store.transport });
     }
   }
   return json(res, 404, { error: 'Не знайдено' });
@@ -290,7 +556,6 @@ async function serveStatic(req, res, url) {
     res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': MIME[ext] || 'application/octet-stream', 'Cache-Control': cache });
     fs.createReadStream(file).pipe(res);
   } catch {
-    // SPA fallback
     const html = await fsp.readFile(path.join(PUBLIC_DIR, 'index.html'));
     send(res, 200, html, { 'Content-Type': MIME['.html'], 'Cache-Control': 'no-cache' });
   }
@@ -306,4 +571,4 @@ http.createServer(async (req, res) => {
     if (!res.headersSent) json(res, err.status || 500, { error: err.status ? err.message : 'Помилка сервера' });
     if (!err.status) console.error(err);
   }
-}).listen(PORT, () => console.log(`PLAI//OS → http://localhost:${PORT}  · AI: ${ANTHROPIC_API_KEY ? ANTHROPIC_MODEL : 'off'} · admin: ${ADMIN_PASSWORD ? 'on' : 'off'}`));
+}).listen(PORT, () => console.log(`PLAI//OS → http://localhost:${PORT} · AI: ${ANTHROPIC_API_KEY ? ANTHROPIC_MODEL : 'off'} · admin: ${ADMIN_PASSWORD ? 'on' : 'off'}`));

@@ -19,7 +19,8 @@ const PLACES = [
   ['Ресторан', 'Основні прийоми їжі.'],
   ['Боулінг', 'Вечірня активність 8 грудня.'],
   ['Рецепція / готель', 'Прибуття та поселення.'],
-  ['Екоферма', 'Екскурсія 9 грудня; місце збору уточнюється.']
+  ['Екоферма', 'Екскурсія 9 грудня; місце збору уточнюється.'],
+  ['Приватний event space', 'Фінальна вечірка 9 грудня.']
 ];
 const CITIES = [
   { name: 'Одеса', note: 'Автобус з Одеси попередньо заплановано на 6 грудня о 22:30. Точка збору уточнюється.', bus: true },
@@ -28,7 +29,7 @@ const CITIES = [
 ];
 const GALLERY = ['forum.jpg', 'FIL_1376.jpg', 'img-77.jpg'].map(f => 'https://raw.githubusercontent.com/Suhrobss/MY/main/images/' + f);
 const PEOPLE_ROLES = { 'Олег Григорюк': 'Голова ПРМТУ' };
-const SUGGESTIONS = ['Що відбувається зараз?', 'Коли Bowling Night?', 'Які паралельні сесії 8 грудня?', 'Як доїхати з Одеси?', 'Що взяти на підйомники?', 'Де проходить Unionize?'];
+const SUGGESTIONS = ['Що відбувається зараз?', 'Як записатися на паралельну сесію?', 'Де моє місце на Unionize?', 'Коли Bowling Night?', 'Як доїхати з Ізмаїла?', 'Хто ведучі столів Unionize?'];
 
 /* ============ helpers ============ */
 const $ = (s, r = document) => r.querySelector(s);
@@ -93,11 +94,13 @@ const trailShape = (t, size = 14) => {
 const S = {
   data: store.get('plai:cache', null),
   offline: false,
-  saved: new Set(store.get('plai:saved', [])),
+  me: null,
+  asker: store.get('plai:asker', '') || (() => { const a = (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now()); store.set('plai:asker', a); return a; })(),
+  myQuestions: [],
   seen: store.get('plai:seen', ''),
   chat: [],
   asking: false,
-  admin: { me: null, data: null, tab: 'announcements' },
+  admin: { me: null, data: null, tab: 'todo' },
   filter: 'all',
   route: { name: 'home', arg: '' }
 };
@@ -132,7 +135,7 @@ async function load(silent = false) {
 function marks() {
   const latest = S.data?.announcements?.[0]?.id || '';
   $$('.dot').forEach(d => d.hidden = !latest || latest === S.seen || S.route.name === 'updates');
-  $$('.count').forEach(c => { c.hidden = !S.saved.size; c.textContent = S.saved.size; });
+  $$('.me-dot').forEach(c => { c.hidden = !S.me; });
 }
 
 /* ============ live clock ============ */
@@ -163,10 +166,7 @@ function preview() {
 function offlineBar() {
   return S.offline ? `<div class="bar bar-warn">${ic('wifi')}<span><b>Немає з’єднання</b> · показано останню збережену версію</span><button class="link" data-act="reload">Оновити</button></div>` : '';
 }
-function saveBtn(e, cls = '') {
-  const on = S.saved.has(e.id);
-  return `<button class="save ${on ? 'on' : ''} ${cls}" data-save="${esc(e.id)}" aria-pressed="${on}" aria-label="${on ? 'Прибрати з мого маршруту' : 'Додати в мій маршрут'}: ${esc(e.title)}">${ic('star')}</button>`;
-}
+function saveBtn() { return ''; }
 function poster(e, variant = '') {
   const ch = chapterOf(e.date);
   const photo = e.speakerPhotoUrl && /^https:\/\//.test(e.speakerPhotoUrl) ? e.speakerPhotoUrl : '';
@@ -232,10 +232,11 @@ function viewHome() {
         <h1 class="mega">Молодь<br><span class="mega-outline">збирається.</span></h1>
       </div>
       <div class="hero-copy">
-        <p class="hero-lead">Чотири дні у Плаї: дискусії, практичні лаби, Unionize, гори й фінальна ніч. Обирай свою трасу — і збирай власний маршрут форуму.</p>
+        <p class="hero-lead">Чотири дні у Плаї: дискусії, практичні лаби, Unionize, гори й фінальна ніч. Знайди свій стіл, запишись на сесії й тримай увесь форум у кишені — у «Мій форум».</p>
         <div class="hero-cta">
           <a class="btn btn-lift" href="#/program">Програма 7–10 грудня ${ic('arrow')}</a>
           <button class="btn btn-ghost" data-act="film">${ic('play')} Відео форуму</button>
+          <a class="btn btn-ghost" href="#/me">${ic('star')} ${S.me ? 'Мій форум' : 'Увійти за кодом'}</a>
         </div>
         <dl class="cd" aria-label="До початку форуму" ${cd.done ? 'hidden' : ''}>
           <div><dt>днів</dt><dd data-cd="d">${pad(cd.d)}</dd></div>
@@ -265,7 +266,7 @@ function viewHome() {
     <div class="hero-meta wrap">
       <span>${L.before ? `ДО ФОРУМУ · ${Math.ceil((FORUM_START - Date.now()) / 864e5)} ДН.` : L.after ? 'ПІДСУМКИ ФОРУМУ' : `ДЕНЬ ФОРУМУ · ${L.day.slice(8)} ГРУДНЯ`}</span>
       <span>07—10.12.2026 / ГК «ПЛАЙ»</span>
-      <span class="hide-sm">48.66° N · Карпати</span>
+      <span class="hide-sm">${S.data.settings?.participantsLabel ? esc(S.data.settings.participantsLabel) + ' · ' : ''}Плав’я · Львівська обл.</span>
     </div>
   </section>
 
@@ -320,48 +321,55 @@ function viewHome() {
 
   <section class="wrap sec" id="speakers">
     <div class="sec-head"><span class="kicker">ЛЮДИ</span><h2>Спікери.</h2><p>Участь за попередньою програмою.</p></div>
-    <div class="people">${people.map(p => `
-      <article class="person">
-        <div class="person-face">${p.photo ? `<img loading="lazy" src="${esc(p.photo)}" alt="Фото: ${esc(p.name)}">` : `<span aria-hidden="true">${esc(p.name.split(' ').map(w => w[0]).join('').slice(0, 2))}</span>`}</div>
-        <div><strong>${esc(p.name)}</strong><small>${esc(p.role)}</small>
-        <span class="person-ev">${p.events.map(e => `<a href="#/event/${esc(e.id)}">${esc(e.title)}</a>`).join(' · ')}</span>
-        ${p.credit ? `<details class="credit"><summary>Джерело фото</summary><small>${esc(p.credit)}</small></details>` : ''}</div>
-      </article>`).join('') || '<p>Склад спікерів уточнюється.</p>'}
+    <div class="people">${people.map(personCard).join('') || '<p>Склад спікерів уточнюється.</p>'}
     </div>
   </section>
 
   <section class="wrap sec">
     <div class="sec-head row"><div><span class="kicker">АРХІВ</span><h2>Фотоархів.</h2></div>
       <div class="gal-nav"><button class="icon-btn" data-gal="-1" aria-label="Попереднє фото">←</button><button class="icon-btn" data-gal="1" aria-label="Наступне фото">→</button></div></div>
+    ${S.data.settings?.driveUrl ? `<p><a class="btn btn-ghost" href="${esc(S.data.settings.driveUrl)}" target="_blank" rel="noopener noreferrer">Усі фото форуму ${ic('ext')}</a></p>` : ''}
     <div class="gallery">${GALLERY.map((src, i) => `<figure><a href="${src}" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="${src}" alt="Архівне фото Молодіжної ради ${i + 1}"></a><figcaption>${pad(i + 1)} / ${pad(GALLERY.length)}</figcaption></figure>`).join('')}</div>
   </section>
 
   <section class="wrap sec split">
-    <div class="tile">
-      <span class="kicker">ПАРТНЕРИ</span><h3>Партнери</h3>
-      <p>Перелік партнерів буде опубліковано після підтвердження організаторами.</p>
-    </div>
     <a class="tile tile-ink" href="#/updates">
       <span class="kicker kicker-inv">${ic('bell')} ЗВ’ЯЗОК</span><h3>Оголошення організаторів.</h3>
       <p>Оперативні зміни програми, повідомлення організаторів і push на телефон за твоєю згодою.</p>
       <span class="link">Оголошення ${ic('arrow')}</span>
     </a>
+    <a class="tile" href="${esc(S.data.settings?.telegramUrl || '#/info')}" ${S.data.settings?.telegramUrl ? 'target="_blank" rel="noopener noreferrer"' : ''}>
+      <span class="kicker">${ic('users')} ЖИВЕ СПІЛКУВАННЯ</span><h3>Telegram-канал форуму.</h3>
+      <p>${S.data.settings?.telegramUrl ? 'Новини, фото й спілкування учасників в одному каналі.' : 'Канал готується — посилання з’явиться тут.'}</p>
+      <span class="link">${S.data.settings?.telegramUrl ? 'Відкрити' : 'Корисне'} ${ic('arrow')}</span>
+    </a>
+  </section>
+  <section class="wrap sec" id="sponsors">
+    <div class="sec-head"><span class="kicker">ПІДТРИМКА</span><h2>Спонсори та партнери.</h2></div>
+    ${sponsorsBlock()}
   </section>
   ${footer()}`;
 }
 
 function speakers() {
-  const map = new Map();
-  for (const e of sortEv(events())) {
-    for (const raw of (e.speakerNames || '').split(' · ')) {
-      const name = raw.trim();
-      if (!name || name.includes('за робочою програмою') || name.startsWith('ГО «')) continue;
-      if (!map.has(name)) map.set(name, { name, role: PEOPLE_ROLES[name] || 'Посада уточнюється', photo: '', credit: '', events: [] });
-      const p = map.get(name); p.events.push(e);
-      if (e.speakerPhotoUrl && name === 'Олег Григорюк') { p.photo = e.speakerPhotoUrl; p.credit = e.speakerPhotoCredit; }
-    }
-  }
-  return [...map.values()];
+  return [...(S.data.speakers || [])].sort((a, b) => (a.order || 0) - (b.order || 0)).map(p => ({ ...p, evs: (p.events || []).map(evById).filter(Boolean) }));
+}
+function initials(name) { return String(name || '').replace(/[«»"]/g, '').split(/\s+/).filter(Boolean).map(w => w[0]).join('').slice(0, 2).toUpperCase(); }
+function personCard(p) {
+  return `<article class="person">
+    <div class="person-face">${p.photo ? `<img loading="lazy" src="${esc(p.photo)}" alt="Фото: ${esc(p.name)}">` : `<span aria-hidden="true">${esc(initials(p.name))}</span>`}</div>
+    <div><strong>${esc(p.name)}</strong><small>${esc([p.role, p.org].filter(Boolean).join(' · ') || 'Посада уточнюється')}</small>
+    ${p.evs.length ? `<span class="person-ev">${p.evs.map(e => `<a href="#/event/${esc(e.id)}">${esc(e.title)}</a>`).join(' · ')}</span>` : ''}</div>
+    ${p.logo ? `<img class="person-logo" loading="lazy" src="${esc(p.logo)}" alt="Логотип: ${esc(p.org || p.name)}">` : ''}
+  </article>`;
+}
+function sponsorsBlock() {
+  const list = [...(S.data.sponsors || [])].sort((a, b) => (a.order || 0) - (b.order || 0));
+  if (!list.length) return `<div class="tile"><span class="kicker">СПОНСОРИ ТА ПАРТНЕРИ</span><h3>Спонсори</h3><p>Перелік спонсорів і партнерів буде опубліковано після підтвердження організаторами.</p></div>`;
+  return `<div class="sponsors">${list.map(s => `<${s.url ? `a href="${esc(s.url)}" target="_blank" rel="noopener noreferrer"` : 'div'} class="sponsor">
+      <div class="sponsor-logo">${s.logo ? `<img loading="lazy" src="${esc(s.logo)}" alt="Логотип: ${esc(s.name)}">` : `<span>${esc(initials(s.name))}</span>`}</div>
+      <div><strong>${esc(s.name)}</strong>${s.text ? `<p>${esc(s.text)}</p>` : ''}</div>
+    </${s.url ? 'a' : 'div'}>`).join('')}</div>`;
 }
 
 function dayProfile(list, day) {
@@ -394,26 +402,71 @@ function dayProfile(list, day) {
   </figure>`;
 }
 
+const slotKeyOf = e => e.date + ' ' + e.start;
+const slotClosed = slot => { const [d, t] = slot.split(' '); return Date.now() >= Date.parse(`${d}T${t}:00+02:00`); };
+function sessionBar(slot, group) {
+  const counts = S.data.sessionCounts || {};
+  const mine = S.me?.sessions?.[slot];
+  const closed = slotClosed(slot);
+  return `<div class="signup">
+    <div class="signup-head"><b>${mine ? 'Ви записані ✓' : 'Запис на паралельну сесію'}</b><span>${closed ? 'Запис закрито' : 'Місця обмежені — записуйтесь швидше'}</span></div>
+    <div class="signup-opts">${group.map(e => {
+      const n = counts[e.id] || 0, cap = e.capacity || 25, left = Math.max(0, cap - n), on = mine === e.id, full = left === 0 && !on;
+      return `<div class="signup-opt ${on ? 'on' : ''}">
+        <div class="signup-info"><strong>${esc(e.title)}</strong><small>${esc(e.venue || '')} · ${left > 0 ? `залишилось ${left} з ${cap}` : 'місць немає'}</small><span class="meter" aria-hidden="true"><i style="width:${Math.min(100, n / cap * 100).toFixed(0)}%"></i></span></div>
+        ${S.me && !closed ? (on ? `<button class="btn btn-ghost" data-sess="${esc(slot)}" data-ev="">Скасувати</button>` : `<button class="btn btn-lift" data-sess="${esc(slot)}" data-ev="${esc(e.id)}" ${full ? 'disabled' : ''}>${mine ? 'Перейти сюди' : 'Записатися'}</button>`) : on ? '<span class="status s-confirmed">Ваша сесія</span>' : ''}
+      </div>`;
+    }).join('')}</div>
+    ${S.me ? '' : `<a class="link" href="#/me">Увійдіть у «Мій форум» за персональним кодом, щоб записатися ${ic('arrow')}</a>`}
+  </div>`;
+}
+function unionizeMap() {
+  const tables = S.data.unionize?.tables || [];
+  const me = S.me;
+  const pos = i => ({ x: 130 + (i % 3) * 270, y: 130 + Math.floor(i / 3) * 250 });
+  const g = tables.map((t, i) => {
+    const { x, y } = pos(i), mine = me?.table === t.n, cap = t.capacity;
+    const seats = Array.from({ length: cap }, (_, k) => {
+      const a = -Math.PI / 2 + (k + 1) * 2 * Math.PI / (cap + 1), sx = (x + 80 * Math.cos(a)).toFixed(1), sy = (y + 80 * Math.sin(a)).toFixed(1);
+      const isMe = mine && me.seat === k + 1, filled = k < (t.taken || 0);
+      return `<circle cx="${sx}" cy="${sy}" r="12" class="seat ${isMe ? 'me' : filled ? 'taken' : ''}"/>${isMe ? `<text x="${sx}" y="${(+sy + 4).toFixed(1)}" class="seat-me-t">Ви</text>` : ''}`;
+    }).join('');
+    const label = t.n === 1 ? (t.label || 'Керівництво') : (t.host || '');
+    return `<g class="utable ${mine ? 'mine' : ''}"><circle cx="${x}" cy="${y}" r="54" class="tbl"/><rect x="${x - 10}" y="${y - 104}" width="20" height="20" rx="5" class="host"/>${seats}<text x="${x}" y="${y - 4}" class="tn">Стіл ${t.n}</text><text x="${x}" y="${y + 17}" class="tl">${esc(label.length > 16 ? label.slice(0, 15) + '…' : label)}</text></g>`;
+  }).join('');
+  return `<figure class="umap"><svg viewBox="0 0 800 760" role="img" aria-label="Схема залу Unionize: 9 столів, вид зверху">${g}</svg>
+    <figcaption><span><i class="lg lg-host"></i>Ведучий</span><span><i class="lg lg-taken"></i>Зайняте місце</span><span><i class="lg lg-me"></i>Ваше місце</span></figcaption></figure>`;
+}
+function unionizePanel() {
+  if (!S.me) return `<div class="bar bar-info">${ic('lock')}<span>Увійдіть у <a href="#/me">«Мій форум»</a>, щоб побачити свій стіл, місце й сусідів.</span></div>`;
+  if (!S.me.table) return `<div class="bar bar-info">${ic('info')}<span>Ваше місце на Unionize ще не призначене. Розсадку опублікують організатори.</span></div>`;
+  const t = S.me.tableInfo || {};
+  return `<div class="tile my-table"><span class="kicker">ВАШЕ МІСЦЕ</span><h3>Стіл ${S.me.table} · місце ${S.me.seat}</h3>
+    <p>${t.n === 1 ? esc(t.label || 'Керівництво та гості') : `Ведучий: ${esc(t.host || 'уточнюється')}`}</p>
+    ${S.me.neighbours.length ? `<p class="fine">За столом: ${S.me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}</div>`;
+}
+
 function viewProgram(day) {
   if (!DAYS.includes(day)) { const t = kyivParts().day; day = DAYS.includes(t) ? t : DAYS[0]; }
+  if (S.filter === 'mine') S.filter = 'all';
   const ch = chapterOf(day);
   const L = liveState();
-  let list = sortEv(events().filter(e => e.date === day));
-  const all = list;
-  if (S.filter === 'key') list = list.filter(e => !isMinor(e));
-  if (S.filter === 'mine') list = list.filter(e => S.saved.has(e.id));
+  const all = sortEv(events().filter(e => e.date === day));
+  const list = S.filter === 'key' ? all.filter(e => !isMinor(e)) : all;
   const slots = new Map();
   for (const e of list) { const k = e.start || 'до ' + (e.end || 'уточнення'); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   const rows = [...slots].map(([time, group]) => {
     const isNow = group.some(e => L.current?.id === e.id);
-    const past = L.day === day && group.every(e => endMins(e) != null && endMins(e) <= L.now) || L.day > day;
+    const past = (L.day === day && group.every(e => endMins(e) != null && endMins(e) <= L.now)) || L.day > day;
+    const parallel = group.length > 1 && group.every(e => e.track === 'parallel');
     return `<section class="slot ${isNow ? 'is-now' : ''} ${past ? 'is-past' : ''}">
-      <div class="slot-time"><b>${esc(time)}</b>${group.length > 1 ? '<small>Паралельні сесії</small>' : ''}${isNow ? '<small class="now-tag"><span class="live-dot"></span>зараз</small>' : ''}</div>
-      <div class="slot-cards ${group.length > 1 ? 'two' : ''}">${group.map(e => isMinor(e) && group.length === 1 ? rowMinor(e) : poster(e, 'poster-row')).join('')}</div>
+      <div class="slot-time"><b>${esc(time)}</b>${parallel ? '<small>Паралельні сесії</small>' : ''}${isNow ? '<small class="now-tag"><span class="live-dot"></span>зараз</small>' : ''}</div>
+      <div><div class="slot-cards ${group.length > 1 ? 'two' : ''}">${group.map(e => isMinor(e) && group.length === 1 ? rowMinor(e) : poster(e, 'poster-row')).join('')}</div>
+      ${parallel ? sessionBar(slotKeyOf(group[0]), group) : ''}</div>
     </section>`;
   }).join('');
   return `
-  ${pageHead('07–10 ГРУДНЯ', 'Програма', 'Оберіть день і відкрийте афішу події.')}
+  ${pageHead('07–10 ГРУДНЯ', 'Програма', 'Одна програма для всіх. На паралельні сесії записуйтесь у «Мій форум».')}
   <div class="wrap">${preview()}${offlineBar()}</div>
   <div class="wrap days" role="tablist" aria-label="Дні форуму">${CHAPTERS.map(c => `
     <a role="tab" aria-selected="${c.id === day}" class="day t-${c.trail} ${c.id === day ? 'on' : ''}" href="#/program/${c.id}">
@@ -426,10 +479,10 @@ function viewProgram(day) {
   </section></div>
   <div class="wrap">${dayProfile(all, day)}</div>
   <div class="wrap filters" role="group" aria-label="Фільтр подій">
-    ${[['all', 'Усе'], ['key', 'Головне'], ['mine', `Мій маршрут${S.saved.size ? ' · ' + S.saved.size : ''}`]].map(([k, l]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
+    ${[['all', 'Усе'], ['key', 'Головне']].map(([k, l]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
     <button class="chip" data-ics-day="${day}">${ic('cal')} Увесь день у календар</button>
   </div>
-  <div class="wrap timeline">${rows || `<div class="empty">${S.filter === 'mine' ? 'У цей день у твоєму маршруті ще немає подій. Тисни ★ на афіші.' : 'Подій поки немає.'}</div>`}</div>
+  <div class="wrap timeline">${rows || '<div class="empty">Подій поки немає.</div>'}</div>
   ${footer()}`;
 }
 function rowMinor(e) {
@@ -442,6 +495,7 @@ function viewEvent(id) {
   const ch = chapterOf(e.date);
   const related = sortEv(events().filter(x => x.date === e.date && x.id !== e.id && x.status !== 'canceled' && !isMinor(x))).slice(0, 3);
   const photo = e.speakerPhotoUrl && /^https:\/\//.test(e.speakerPhotoUrl) ? e.speakerPhotoUrl : '';
+  const parallelGroup = e.track === 'parallel' && e.start ? sortEv(events().filter(x => x.track === 'parallel' && x.date === e.date && x.start === e.start)) : null;
   return `
   <section class="ev-hero t-${ch.trail} tone-${esc(e.tone || 'feature')}">
     <svg class="ev-topo" viewBox="0 0 200 120" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${topoPaths(e.id + 'x')}</svg>
@@ -457,11 +511,13 @@ function viewEvent(id) {
   <div class="wrap ev-grid">
     <article class="ev-story">
       ${photo ? `<figure class="ev-photo"><img src="${esc(photo)}" alt="Фото спікера: ${esc(e.speakerNames || 'спікер')}"><figcaption>${esc(e.speakerPhotoCredit || 'Фото надано організаторами')}</figcaption></figure>` : ''}
+      ${parallelGroup && parallelGroup.length > 1 ? sessionBar(slotKeyOf(e), parallelGroup) : ''}
       <span class="kicker">ПРО ЩО ЦЯ ПОДІЯ</span>
       <p class="ev-lead">${esc(e.teaser || e.details || 'Деталі уточнюються організаторами.')}</p>
       <span class="kicker">ЧОМУ ЦЕ ЦІКАВО</span>
       <p>${esc(e.why || 'Поговоримо про цю тему в межах форумної програми.')}</p>
-      ${e.details ? `<div class="source"><b>З робочої програми:</b> ${esc(e.details)}</div>` : ''}
+      ${e.details ? `<div class="source"><b>З програми:</b> ${esc(e.details)}</div>` : ''}
+      ${e.unionize ? `<span class="kicker">СХЕМА ЗАЛУ · ВИД ЗВЕРХУ</span>${unionizeMap()}${unionizePanel()}` : ''}
       <a class="ask-inline" href="#/ask" data-ask-about="${esc(e.id)}"><span class="spark"></span> Запитати Claude про «${esc(e.title)}» ${ic('arrow')}</a>
     </article>
     <aside class="facts">
@@ -471,12 +527,11 @@ function viewEvent(id) {
         <div><dt>Час</dt><dd>${esc(formatRange(e))}</dd></div>
         <div><dt>Місце</dt><dd>${esc(e.venue || 'Уточнюється')}</dd></div>
         <div><dt>Статус</dt><dd><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></dd></div>
-        ${e.track === 'parallel' ? '<div><dt>Формат</dt><dd>Паралельна сесія</dd></div>' : ''}
+        ${e.track === 'parallel' ? `<div><dt>Формат</dt><dd>Паралельна сесія${e.capacity ? `, ${e.capacity} місць` : ''}</dd></div>` : ''}
         ${e.speakerNames ? `<div><dt>Учасники / спікери (попередньо)</dt><dd>${esc(e.speakerNames)}</dd></div>` : ''}
       </dl>
-      ${photo ? '' : '<p class="fine">Портрети спікерів додадуть після погодження матеріалів.</p>'}
       <div class="facts-act">
-        <button class="btn btn-lift full" data-save="${esc(e.id)}">${ic('star')} ${S.saved.has(e.id) ? 'У моєму маршруті' : 'Додати в мій маршрут'}</button>
+        ${e.link ? `<a class="btn btn-lift full" href="${esc(e.link)}" target="_blank" rel="noopener noreferrer">${ic('ext')} Про локацію на сайті «Плаю»</a>` : ''}
         <button class="btn btn-ghost full" data-share="${esc(e.id)}">${ic('share')} Поділитися анонсом</button>
         ${e.start && e.end ? `<button class="btn btn-ghost full" data-ics="${esc(e.id)}">${ic('cal')} Додати у календар</button>` : ''}
       </div>
@@ -486,16 +541,29 @@ function viewEvent(id) {
   ${footer()}`;
 }
 
+function routeStops(t) { return String(t.title || '').split('→').map(s => s.trim()).filter(Boolean); }
+function transportCard(t) {
+  const mine = S.me?.group === t.key;
+  const stops = routeStops(t);
+  const url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(stops[0] || '') + '&destination=' + encodeURIComponent('Гірськолижний комплекс Плай, Плав’я');
+  return `<article class="tile route-card ${mine ? 'mine' : ''}">
+    <span class="kicker">${ic(t.mode === 'car' ? 'compass' : 'bus')} ${t.mode === 'car' ? 'АВТОМОБІЛЬ' : 'АВТОБУС'}${mine ? ' · ВАША ГРУПА' : ''}</span>
+    <div class="stops">${stops.map((s, i) => `${i ? '<span class="stop-line" aria-hidden="true"><i></i></span>' : ''}<b>${esc(s)}</b>`).join('')}</div>
+    <p>${esc(t.note || '')}</p>
+    <p class="meet"><b>Збір:</b> ${t.meet ? esc(t.meet) : 'точка і час збору уточнюються'}</p>
+    <a class="link" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Маршрут на карті ${ic('ext')}</a>
+  </article>`;
+}
 function viewTravel() {
   return `
-  ${pageHead('ЛОГІСТИКА', 'Твій Плай.', 'Локації з програми форуму. Точні маршрути та розташування точок ще мають бути підтверджені організаторами.')}
+  ${pageHead('ЛОГІСТИКА', 'Твій Плай.', 'Як учасники добираються до «Плаю» і де що знаходиться за програмою.')}
   <div class="wrap">${preview()}</div>
   <section class="wrap sec">
     <div class="loc">
       <div class="loc-copy">
         <span class="kicker kicker-inv">OFFICIAL LOCATION</span>
         <h2>Гірськолижний комплекс «Плай»</h2>
-        <p>На офіційному сайті комплексу є інтерактивна карта. Поки що використовуємо саме її — без вигаданих координат і маршрутів.</p>
+        <p>с. Плав’я, Львівська область. На офіційному сайті комплексу є інтерактивна карта території.</p>
         <a class="btn btn-lift" href="https://play-karpaty.com/" target="_blank" rel="noopener noreferrer">Перейти на сайт комплексу ${ic('ext')}</a>
       </div>
       <svg class="loc-art" viewBox="0 0 400 260" aria-hidden="true">
@@ -507,9 +575,12 @@ function viewTravel() {
     </div>
   </section>
   <section class="wrap sec">
-    <div class="sec-head"><span class="kicker">ЯК ДІСТАТИСЯ</span><h2>Звідки їдеш?</h2></div>
-    <div class="cities" role="group" aria-label="Місто виїзду">${CITIES.map((c, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-city="${i}" aria-pressed="${i === 0}">${esc(c.name)}</button>`).join('')}</div>
-    <div class="route" aria-live="polite">${routeCard(0)}</div>
+    <div class="sec-head"><span class="kicker">ЯК ДІСТАТИСЯ</span><h2>Три шляхи до «Плаю».</h2><p>${S.me ? 'Вашу групу виділено.' : 'Свою групу доїзду бачитимете в «Мій форум».'}</p></div>
+    <div class="routes">${(S.data.transport || []).map(transportCard).join('')}</div>
+    <div class="tile" style="margin-top:14px"><span class="kicker">${ic('clock')} ПОВЕРНЕННЯ</span><ol class="legs">
+      <li><b>10 грудня · 12:30</b><span>Попередній час виїзду з «Плаю». Обід з собою.</span></li>
+      <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси. Може змінитися.</span></li>
+    </ol></div>
   </section>
   <section class="wrap sec">
     <div class="sec-head"><span class="kicker">ЗА ПРОГРАМОЮ</span><h2>Основні місця.</h2></div>
@@ -518,26 +589,21 @@ function viewTravel() {
   </section>
   ${footer()}`;
 }
-function routeCard(i) {
-  const c = CITIES[i];
-  const url = 'https://www.google.com/maps/dir/?api=1&origin=' + encodeURIComponent(c.name) + '&destination=' + encodeURIComponent('Гірськолижний комплекс Плай, Плав’я');
-  return `<div class="route-line"><b>${esc(c.name)}</b><span class="route-track" aria-hidden="true"><i></i>${c.bus ? ic('bus') : ic('compass')}</span><b>ГК «Плай»</b></div>
-    <p>${esc(c.note)}</p><a class="btn btn-ghost" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Відкрити маршрут на карті ${ic('ext')}</a>`;
-}
 
 function viewInfo() {
   const ios = /iPad|iPhone|iPod/.test(navigator.userAgent);
   const standalone = matchMedia('(display-mode: standalone)').matches || navigator.standalone;
   const support = 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
   const pushReady = support && S.data.webPushAvailable && !(ios && !standalone);
+  const st = S.data.settings || {};
   return `
-  ${pageHead('ДЛЯ УЧАСНИКІВ', 'Корисне.', 'Практична інформація, сповіщення та питання щодо участі у форумі.')}
+  ${pageHead('ДЛЯ УЧАСНИКІВ', 'Корисне.', 'Практична інформація, сповіщення, фото та зв’язок з організаторами.')}
   <div class="wrap">${preview()}</div>
   <div class="wrap bento">
     <article class="tile tile-ink b-push">
       <span class="kicker kicker-inv">${ic('bell')} STAY INFORMED</span>
       <h3>Сповіщення про важливе</h3>
-      <p>Отримуйте повідомлення про зміни програми, точки збору та новини. Підписка добровільна, її можна вимкнути.</p>
+      <p>Зміни програми, точки збору, відповіді організаторів на ваші питання. Підписка добровільна, її можна вимкнути.</p>
       ${ios && !standalone ? `<ol class="steps"><li>У Safari натисніть «Поділитися» (Share).</li><li>Оберіть «На початковий екран» (Add to Home Screen).</li><li>Відкрийте доданий сайт та натисніть «Увімкнути сповіщення».</li></ol><p class="fine inv">На iPhone push працюють для сайту, доданого на головний екран.</p>` : ''}
       ${!support ? '<p class="fine inv">Цей браузер не підтримує Web Push або потрібен захищений HTTPS-доступ.</p>' : !S.data.webPushAvailable ? '<p class="fine inv">Відправлення push ще не налаштоване організатором.</p>' : ''}
       <div class="row-btns"><button class="btn btn-lift" data-act="sub" ${pushReady ? '' : 'disabled'}>${ic('bell')} Увімкнути сповіщення</button><button class="btn btn-ghost inv" data-act="unsub" ${support ? '' : 'disabled'}>Вимкнути</button></div>
@@ -547,20 +613,25 @@ function viewInfo() {
       <span class="kicker">${ic('bus')} BEFORE YOU GO</span>
       <h3>Трансфер та від’їзд</h3>
       <ol class="legs">
-        <li><b>06 грудня · 22:30</b><span>Попередній час виїзду автобусом з Одеси. Точка збору не підтверджена.</span></li>
-        <li><b>10 грудня · 12:30</b><span>Попередній час виїзду з комплексу «Плай».</span></li>
-        <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси за робочою програмою. Може змінитися.</span></li>
+        <li><b>06 грудня · 22:30</b><span>Попередній час виїзду спільного автобуса з Одеси. Точка збору уточнюється.</span></li>
+        <li><b>10 грудня · 12:30</b><span>Попередній час виїзду з «Плаю». Обід з собою.</span></li>
+        <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси. Може змінитися.</span></li>
       </ol>
+      <a class="link" href="#/travel">Групи доїзду ${ic('arrow')}</a>
     </article>
     <article class="tile">
       <span class="kicker">${ic('info')} NEED HELP?</span><h3>Потрібна допомога?</h3>
-      <p>Контакт відповідального координатора ще не підтверджений. Після погодження він з’явиться тут.</p>
-      <span class="tag">Контакт уточнюється</span>
+      ${st.coordinator ? `<p>${esc(st.coordinator)}</p>` : '<p>Контакт координатора з’явиться тут після погодження.</p><span class="tag">Контакт уточнюється</span>'}
+      <a class="link" href="#/ask">Або запитайте Claude — якщо він не знає, передасть питання організаторам ${ic('arrow')}</a>
     </article>
     <article class="tile">
-      <span class="kicker">${ic('users')} OUR COMMUNITY</span><h3>Залишаймося на зв’язку</h3>
-      <p>Тут з’являться перевірені прямі посилання на сторінки MTWTU Youth, ПРМТУ та ГО «Трудові Ініціативи».</p>
-      <span class="tag">Посилання погоджуються</span>
+      <span class="kicker">${ic('users')} ЖИВЕ СПІЛКУВАННЯ</span><h3>Залишаймося на зв’язку</h3>
+      ${st.telegramUrl ? `<p>Telegram-канал форуму: новини, фото, спілкування.</p><a class="btn btn-lift" href="${esc(st.telegramUrl)}" target="_blank" rel="noopener noreferrer">Відкрити Telegram ${ic('ext')}</a>` : '<p>Telegram-канал форуму з’явиться тут.</p><span class="tag">Канал готується</span>'}
+      <a class="link" href="https://www.instagram.com/mtwtuyouth/" target="_blank" rel="noopener noreferrer">Instagram Молодіжної ради ${ic('ext')}</a>
+    </article>
+    <article class="tile">
+      <span class="kicker">${ic('download')} ФОТОГРАФІЇ</span><h3>Фото форуму</h3>
+      ${st.driveUrl ? `<p>Усі фото з форуму в одній папці.</p><a class="btn btn-lift" href="${esc(st.driveUrl)}" target="_blank" rel="noopener noreferrer">Відкрити фото ${ic('ext')}</a>` : '<p>Посилання на фотоархів форуму з’явиться тут.</p><span class="tag">Після форуму</span>'}
     </article>
     <article class="tile tile-warn b-wide">
       <span class="kicker">${ic('alert')} ВАЖЛИВО</span>
@@ -569,10 +640,11 @@ function viewInfo() {
   </div>
   <section class="wrap sec faq">
     <div class="sec-head"><span class="kicker">FAQ</span><h2>Поширені питання.</h2></div>
-    <details><summary>Де й коли проходить форум?</summary><p>7–10 грудня 2026 року, ГК «Плай».</p><a class="link" href="#/travel">Локації ${ic('arrow')}</a></details>
+    <details><summary>Де й коли проходить форум?</summary><p>7–10 грудня 2026 року, ГК «Плай», с. Плав’я, Львівська область.</p><a class="link" href="#/travel">Локації ${ic('arrow')}</a></details>
+    <details><summary>Як записатися на паралельну сесію?</summary><p>Увійдіть у «Мій форум» за персональним кодом від організаторів і оберіть сесію. У кожній 25 місць, тож краще записатися швидше.</p><a class="link" href="#/me">Мій форум ${ic('arrow')}</a></details>
+    <details><summary>Де моє місце на Unionize?</summary><p>Після входу в «Мій форум» ви бачите свій стіл, місце й сусідів на схемі залу.</p><a class="link" href="#/event/088">Unionize ${ic('arrow')}</a></details>
     <details><summary>Де перевіряти зміни програми?</summary><p>Оперативні повідомлення публікуються в оголошеннях.</p><a class="link" href="#/updates">Оголошення ${ic('arrow')}</a></details>
-    <details><summary>Де дізнатися про трансфер?</summary><p>Попередні години виїзду наведено в розділі «Трансфер та від’їзд». Точка збору уточнюється.</p></details>
-    <details><summary>Не знайшов відповіді?</summary><p>Запитай Claude — він відповідає лише з програми та оголошень організаторів.</p><a class="link" href="#/ask">Запитати ${ic('arrow')}</a></details>
+    <details><summary>Не знайшов відповіді?</summary><p>Запитай Claude. Якщо він не знає точної відповіді, питання піде організаторам, а відповідь прийде сюди ж.</p><a class="link" href="#/ask">Запитати ${ic('arrow')}</a></details>
   </section>
   ${footer()}`;
 }
@@ -596,46 +668,90 @@ function viewUpdates() {
   ${footer()}`;
 }
 
-function viewMy() {
-  const list = sortEv(events().filter(e => S.saved.has(e.id)));
-  const byDay = DAYS.map(d => [d, list.filter(e => e.date === d)]).filter(([, l]) => l.length);
-  const clashes = [];
-  for (let i = 0; i < list.length; i++) for (let j = i + 1; j < list.length; j++) {
-    const a = list[i], b = list[j];
-    if (a.date === b.date && a.start && b.start && mins(a.start) < (endMins(b) ?? mins(b.start) + 1) && mins(b.start) < (endMins(a) ?? mins(a.start) + 1)) clashes.push([a, b]);
+function myAgenda() {
+  const me = S.me; const slots = new Map();
+  for (const e of events()) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
+  const items = [];
+  const tr = me.transport;
+  items.push({ date: '2026-12-06', time: me.group === 'odesa' || me.group === 'izmail' ? '22:30' : '', title: tr ? `Виїзд: ${tr.title}` : 'Виїзд на форум', sub: tr?.meet ? `Збір: ${tr.meet}` : (me.group === 'izmail' ? 'Спільний автобус з Одеси о 22:30 (попередньо). Час виїзду з Ізмаїла уточнюється.' : me.group === 'kyiv' ? 'Час виїзду з Києва уточнюється.' : 'Точка і час збору уточнюються.'), kind: 'travel' });
+  for (const e of sortEv(events())) {
+    if (e.status === 'canceled') continue;
+    if (e.track === 'parallel' && e.start) {
+      const k = slotKeyOf(e); const chosen = me.sessions?.[k];
+      if (chosen && chosen !== e.id) continue;
+      if (!chosen) { if (slots.get(k)[0].id !== e.id) continue; items.push({ date: e.date, time: e.start, title: 'Оберіть паралельну сесію', sub: slots.get(k).map(x => x.title).join(' або '), kind: 'choose', link: '#/event/' + e.id }); continue; }
+      items.push({ date: e.date, time: e.start, title: e.title, sub: `${e.venue || ''} · ваша сесія`, kind: 'mine', link: '#/event/' + e.id }); continue;
+    }
+    items.push({ date: e.date, time: e.start || (e.end ? 'до ' + e.end : ''), title: e.title, sub: e.unionize && me.table ? `${e.venue} · стіл ${me.table}, місце ${me.seat}` : (e.venue || ''), kind: isMinor(e) ? 'minor' : 'main', link: '#/event/' + e.id });
   }
+  items.push({ date: '2026-12-11', time: '05:00', title: 'Прибуття до Одеси', sub: 'Попередньо, може змінитися.', kind: 'travel' });
+  const days = [...new Set(items.map(i => i.date))];
+  const dayName = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', ...WEEKDAY };
+  return days.map(d => `<div class="agenda-day"><h3>${d.slice(8)} грудня · ${dayName[d] || ''}</h3>${items.filter(i => i.date === d).map(i => `
+    <${i.link ? `a href="${i.link}"` : 'div'} class="agenda-row k-${i.kind}"><b>${esc(i.time || '')}</b><span><strong>${esc(i.title)}</strong>${i.sub ? `<small>${esc(i.sub)}</small>` : ''}</span></${i.link ? 'a' : 'div'}>`).join('')}</div>`).join('');
+}
+function viewMe() {
+  if (!S.me) return `
+  ${pageHead('ОСОБИСТЕ', 'Мій форум.', 'Ваш стіл, ваші сесії, ваша група доїзду й особистий розклад — за персональним кодом від організаторів.')}
+  <section class="wrap"><form class="tile login" id="code-form">
+    <span class="kicker">${ic('lock')} ВХІД ЗА КОДОМ</span><h3>Введіть персональний код</h3>
+    <p>Код виглядає як <b>PLAI-XXXX</b>. Ви отримаєте його від організаторів посиланням або QR-кодом на бейджі.</p>
+    <label class="field"><span>Персональний код</span><input name="code" autocomplete="one-time-code" autocapitalize="characters" placeholder="PLAI-____" required></label>
+    <button class="btn btn-lift full" type="submit">Увійти ${ic('arrow')}</button>
+    <p class="fine">Немає коду? Напишіть організаторам або <a href="#/ask">запитайте Claude</a>.</p>
+  </form></section>${footer()}`;
+  const me = S.me;
+  const slots = new Map();
+  for (const e of sortEv(events())) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
+  const qs = me.questions || [];
   return `
-  ${pageHead('ОСОБИСТЕ', 'Мій маршрут.', 'Збирай власну програму: тисни ★ на афіші. Маршрут зберігається лише на цьому пристрої.')}
-  <section class="wrap">
-    ${clashes.length ? `<div class="bar bar-warn">${ic('alert')}<span><b>Накладки в маршруті:</b> ${clashes.map(([a, b]) => `«${esc(a.title)}» і «${esc(b.title)}»`).join('; ')} — це паралельні сесії, обери одну.</span></div>` : ''}
-    ${byDay.length ? byDay.map(([d, l]) => `<div class="my-day"><h2>${trailShape(chapterOf(d).trail, 14)} ${d.slice(8)} грудня · ${WEEKDAY[d]}</h2>${l.map(e => `<div class="my-row"><b>${esc(formatRange(e))}</b><a href="#/event/${esc(e.id)}">${esc(e.title)}</a><span>${esc(e.venue || '')}</span>${saveBtn(e)}</div>`).join('')}</div>`).join('')
-      + `<div class="row-btns"><button class="btn btn-lift" data-act="ics-mine">${ic('download')} Експорт у календар (.ics)</button><button class="btn btn-ghost" data-act="clear-mine">Очистити</button></div>`
-      : `<div class="empty big">${ic('star')}<h2>Маршрут поки порожній</h2><p>Відкрий програму та познач події, які не хочеш пропустити.</p><a class="btn btn-lift" href="#/program">До програми ${ic('arrow')}</a></div>`}
+  ${pageHead('ОСОБИСТЕ', `Привіт, ${esc(me.name.split(' ')[0] || me.name)}.`, 'Це ваш персональний форум: сесії, місце на Unionize, група доїзду й розклад по днях.')}
+  <div class="wrap me-grid">
+    <article class="tile"><span class="kicker">${ic('bus')} ГРУПА ДОЇЗДУ</span><h3>${esc(me.transport?.title || 'Уточнюється')}</h3>
+      <p>${esc(me.transport?.note || 'Організатори вкажуть вашу групу.')}</p><p class="meet"><b>Збір:</b> ${me.transport?.meet ? esc(me.transport.meet) : 'точка і час збору уточнюються'}</p></article>
+    <article class="tile"><span class="kicker">${ic('users')} UNIONIZE</span><h3>${me.table ? `Стіл ${me.table} · місце ${me.seat}` : 'Місце ще не призначене'}</h3>
+      ${me.table ? `<p>${me.table === 1 ? esc(me.tableInfo?.label || 'Керівництво та гості') : `Ведучий: ${esc(me.tableInfo?.host || 'уточнюється')}`}</p>${me.neighbours.length ? `<p class="fine">За столом: ${me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}` : '<p>Розсадку опублікують організатори.</p>'}
+      <a class="link" href="#/event/088">Схема залу ${ic('arrow')}</a></article>
+    ${me.team || me.room ? `<article class="tile"><span class="kicker">${ic('info')} ДЕТАЛІ</span>${me.team ? `<h3>Команда: ${esc(me.team)}</h3>` : ''}${me.room ? `<p>Кімната: ${esc(me.room)}</p>` : ''}</article>` : ''}
+  </div>
+  <section class="wrap sec"><div class="sec-head"><span class="kicker">ПАРАЛЕЛЬНІ СЕСІЇ</span><h2>Ваш вибір.</h2><p>По 25 місць у кожній сесії. Запис відкритий до початку сесії, але місця закінчуються — записуйтесь швидше.</p></div>
+    ${[...slots].map(([k, g]) => `<div class="me-slot"><h3>${esc(k.slice(8, 10))} грудня · ${esc(k.slice(11))}</h3>${sessionBar(k, g)}</div>`).join('')}
+  </section>
+  <section class="wrap sec"><div class="sec-head"><span class="kicker">МІЙ ДЕНЬ</span><h2>Особистий розклад.</h2><p>Спільна програма разом із вашими сесіями, місцем і доїздом.</p></div>
+    <div class="agenda">${myAgenda()}</div></section>
+  <section class="wrap sec"><div class="sec-head"><span class="kicker">ПИТАННЯ</span><h2>Мої питання організаторам.</h2></div>
+    ${qs.length ? `<div class="feed">${qs.map(questionCard).join('')}</div>` : `<p class="fine">Поки немає. Якщо Claude не знає відповіді, ваше питання з’явиться тут разом із відповіддю організаторів.</p>`}
+    <div class="row-btns"><a class="btn btn-lift" href="#/ask">Запитати Claude ${ic('arrow')}</a><button class="btn btn-ghost" data-act="me-logout">Вийти</button></div>
   </section>
   ${footer()}`;
 }
-
+function questionCard(q) {
+  return `<article class="note ${q.status === 'answered' ? 'k-answered' : ''}"><span class="note-kind">${ic(q.status === 'answered' ? 'info' : 'clock')} ${q.status === 'answered' ? 'Відповідь організаторів' : 'Чекає на відповідь'}</span>
+    <h3>${esc(q.text)}</h3>${q.answer ? `<p>${esc(q.answer)}</p>` : '<p class="fine">Організатори вже бачать питання. Відповідь прийде сюди і push-сповіщенням, якщо їх увімкнено.</p>'}</article>`;
+}
 function viewMore() {
-  const items = [['#/travel', 'compass', 'Доїзд', 'Як дістатися та основні місця'], ['#/info', 'info', 'Корисне', 'Трансфер, push, FAQ'], ['#/my', 'star', 'Мій маршрут', `${S.saved.size} збережених подій`], ['#/#speakers', 'users', 'Спікери', 'Учасники програми'], ['#/admin', 'lock', 'Організаторам', 'Панель керування']];
-  return `${pageHead('МЕНЮ', 'Ще.', 'Усі розділи форуму.')}<nav class="wrap more">${items.map(([h, i, t, s]) => `<a href="${h === '#/#speakers' ? '#/' : h}" ${h === '#/#speakers' ? 'data-scroll="speakers"' : ''}>${ic(i)}<span><b>${t}</b><small>${esc(s)}</small></span>${ic('arrow')}</a>`).join('')}<button class="more-theme" data-act="theme">Змінити тему (світла / темна)</button></nav>${footer()}`;
+  const items = [['#/me', 'star', 'Мій форум', S.me ? S.me.name : 'Вхід за персональним кодом'], ['#/updates', 'bell', 'Оголошення', 'Зміни й повідомлення організаторів'], ['#/travel', 'compass', 'Доїзд', 'Групи доїзду та основні місця'], ['#/info', 'info', 'Корисне', 'Трансфер, push, фото, FAQ'], ['#/admin', 'lock', 'Організаторам', 'Панель керування']];
+  return `${pageHead('МЕНЮ', 'Ще.', 'Усі розділи форуму.')}<nav class="wrap more">${items.map(([h, i, t, s]) => `<a href="${h}">${ic(i)}<span><b>${t}</b><small>${esc(s)}</small></span>${ic('arrow')}</a>`).join('')}<button class="more-theme" data-act="theme">Змінити тему (світла / темна)</button></nav>${footer()}`;
 }
 
 /* ============ Claude concierge ============ */
 function viewAsk() {
   const ai = S.data?.ai;
+  const open = (S.myQuestions || []).filter(q => !S.chat.some(m => m.qid === q.id));
   return `
   <section class="ask wrap">
     <header class="ask-head">
       <span class="ask-orb" aria-hidden="true"><span class="spark"></span></span>
       <div><span class="kicker">КОНСЬЄРЖ ФОРУМУ · POWERED BY CLAUDE</span><h1>Запитай форум.</h1>
-      <p>${ai ? 'Відповіді лише з програми, оголошень і логістики. Якщо щось не підтверджено — Claude так і скаже.' : 'AI-режим ще не підключено на сервері — поки шукаю відповіді прямо в програмі.'}</p></div>
+      <p>${ai ? 'Відповіді лише з програми, оголошень і відповідей організаторів. Якщо Claude не знає точно — він передасть питання організаторам, і відповідь прийде сюди.' : 'AI-режим ще не підключено — шукаю відповіді в програмі, а питання без відповіді передаю організаторам.'}${S.me ? ' Claude бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p></div>
     </header>
+    ${open.length ? `<div class="feed">${open.map(questionCard).join('')}</div>` : ''}
     <div class="chat" id="chat" aria-live="polite">${S.chat.length ? S.chat.map(renderMsg).join('') : `
       <div class="chat-empty"><p>Спробуй:</p><div class="chips">${SUGGESTIONS.map(s => `<button class="chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}
     </div>
     <form class="composer" id="ask-form">
       <label class="sr" for="ask-input">Твоє запитання</label>
-      <textarea id="ask-input" rows="1" maxlength="600" placeholder="Наприклад: що робити, якщо я з Києва?" required></textarea>
+      <textarea id="ask-input" rows="1" maxlength="600" placeholder="Наприклад: коли виїзд з Ізмаїла?" required></textarea>
       <button class="send" type="submit" aria-label="Надіслати">${ic('send')}</button>
     </form>
     <p class="fine center">Claude може помилятися — перевіряй важливе в «Оголошеннях». Не вводь особисті дані.</p>
@@ -647,44 +763,60 @@ function md(text) {
   h = h.replace(/\[\[([\w-]+)\]\]/g, (m, id) => { const e = evById(id); return e && !h.includes(`<b>${esc(e.title)}</b>`) ? `<a class="evchip" href="#/event/${esc(id)}">${trailShape(chapterOf(e.date).trail, 9)}${esc(e.title)}</a>` : ''; });
   return h.split(/\n{2,}/).map(p => /^\s*[-•]\s/m.test(p) ? '<ul>' + p.split('\n').filter(Boolean).map(l => `<li>${l.replace(/^\s*[-•]\s*/, '')}</li>`).join('') + '</ul>' : `<p>${p.replace(/\n/g, '<br>')}</p>`).join('');
 }
-function renderMsg(m) {
+function renderMsg(m, i) {
   if (m.role === 'user') return `<div class="msg me"><p>${esc(m.content)}</p></div>`;
   const ids = [...new Set([...(m.content.matchAll(/\[\[([\w-]+)\]\]/g))].map(x => x[1]))].filter(evById).slice(0, 4);
   return `<div class="msg ai ${m.pending ? 'typing' : ''}"><span class="spark" aria-hidden="true"></span><div class="msg-body">${m.content ? md(m.content) : '<span class="dots"><i></i><i></i><i></i></span>'}
     ${!m.pending && ids.length ? `<div class="msg-cards">${ids.map(id => { const e = evById(id); return `<a href="#/event/${esc(id)}" class="mini t-${chapterOf(e.date).trail}"><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</small><b>${esc(e.title)}</b><span>${esc(e.venue || 'Локація уточнюється')} · ${statusLabel(e.status)}</span></a>`; }).join('')}</div>` : ''}
-    ${m.local ? '<small class="fine">Локальний пошук по програмі · AI-режим не підключено</small>' : ''}</div></div>`;
+    ${m.local ? '<small class="fine">Локальний пошук по програмі · AI-режим не підключено</small>' : ''}
+    ${m.pending ? '' : m.qid ? `<p class="escalated">${ic('send')} Питання передано організаторам. Відповідь з’явиться тут${S.me ? ' і в «Мій форум»' : ''}.</p>` : `<button class="link escalate" data-escalate="${i}">${ic('send')} Відповідь не допомогла? Передати питання організаторам</button>`}
+  </div></div>`;
 }
 function paintChat() {
   const c = $('#chat'); if (!c) return;
   c.innerHTML = S.chat.map(renderMsg).join('');
   c.lastElementChild?.scrollIntoView({ block: 'end', behavior: reduceMotion ? 'auto' : 'smooth' });
 }
+async function refreshMyQuestions() {
+  try { const r = await api('/api/questions/mine?asker=' + encodeURIComponent(S.asker)); S.myQuestions = r.questions || []; } catch { /* offline */ }
+}
+async function escalate(i) {
+  const m = S.chat[i]; if (!m || m.qid) return;
+  const q = [...S.chat.slice(0, i)].reverse().find(x => x.role === 'user');
+  if (!q) return;
+  try {
+    const r = await api('/api/questions', { method: 'POST', body: JSON.stringify({ text: q.content, asker: S.asker, draft: m.content }) });
+    m.qid = r.question.id; paintChat(); toast('Питання передано організаторам');
+    refreshMyQuestions(); refreshMe();
+  } catch (e) { toast(e.message); }
+}
 async function ask(q) {
   if (S.asking || !q.trim()) return;
   S.asking = true;
-  const history = S.chat.filter(m => !m.local && !m.pending).map(({ role, content }) => ({ role, content }));
+  const history = S.chat.filter(m => !m.local && !m.pending).map(({ role, content }) => ({ role, content: content.replace(/\[\[ORG\]\]/g, '') }));
   S.chat.push({ role: 'user', content: q });
   const msg = { role: 'assistant', content: '', pending: true };
   S.chat.push(msg); paintChat();
   try {
     if (!S.data.ai) throw Object.assign(new Error('off'), { fallback: true });
-    const r = await fetch('/api/ask', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, history }) });
+    const r = await fetch('/api/ask', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, history, asker: S.asker }) });
     if (!r.ok) { const b = await r.json().catch(() => ({})); throw Object.assign(new Error(b.error || 'Помилка'), { fallback: b.fallback, status: r.status }); }
     const reader = r.body.getReader(); const dec = new TextDecoder(); let buf = '';
     for (;;) {
       const { value, done } = await reader.read(); if (done) break;
       buf += dec.decode(value, { stream: true });
-      let i; while ((i = buf.indexOf('\n\n')) >= 0) {
-        const line = buf.slice(0, i); buf = buf.slice(i + 2);
+      let k; while ((k = buf.indexOf('\n\n')) >= 0) {
+        const line = buf.slice(0, k); buf = buf.slice(k + 2);
         if (!line.startsWith('data:')) continue;
         const d = JSON.parse(line.slice(5));
         if (d.t) { msg.content += d.t; paintChat(); }
-        if (d.error) msg.content += '\n\n_' + d.error + '_';
+        if (d.escalated) { msg.qid = d.escalated; refreshMyQuestions(); refreshMe(); }
+        if (d.error) msg.content += '\n\n' + d.error;
       }
     }
     if (!msg.content) msg.content = 'Не вдалося отримати відповідь. Спробуй ще раз.';
   } catch (err) {
-    if (err.fallback || err.status === 503 || err.status === 502) { Object.assign(msg, localAnswer(q), { local: true }); }
+    if (err.fallback || err.status === 503 || err.status === 502) Object.assign(msg, localAnswer(q), { local: true });
     else msg.content = err.message || 'Не вдалося отримати відповідь.';
   }
   msg.pending = false; S.asking = false; paintChat();
@@ -692,13 +824,14 @@ async function ask(q) {
 function localAnswer(q) {
   const s = q.toLowerCase();
   const L = liveState();
+  if (/місце|стіл|unionize|юніон/.test(s) && S.me) return { content: S.me.table ? `Ваше місце на Unionize: **стіл ${S.me.table}, місце ${S.me.seat}**.${S.me.neighbours.length ? ' За столом: ' + S.me.neighbours.map(n => n.name).join(', ') + '.' : ''} [[088]]` : 'Ваше місце на Unionize ще не призначене. Розсадку опублікують організатори.' };
   if (/зараз|now|наступн/.test(s)) {
     const parts = [];
     if (L.current) parts.push(`Зараз: **${L.current.title}** [[${L.current.id}]]`);
     if (L.next) parts.push(`Наступна подія: **${L.next.title}** — ${L.next.date.slice(8)}.12, ${formatRange(L.next)} [[${L.next.id}]]`);
     return { content: parts.join('\n\n') || 'Зараз подій за програмою немає.' };
   }
-  if (/доїх|доб|трансфер|автобус|одес|льв|київ|виїзд/.test(s)) return { content: 'За попередньою програмою:\n\n- 06 грудня о 22:30 — виїзд автобусом з Одеси (точка збору не підтверджена)\n- 10 грудня о 12:30 — виїзд з «Плаю»\n- 11 грудня ~05:00 — прибуття до Одеси\n\nОрганізований трансфер зі Львова чи Києва не підтверджено. Деталі — у розділі «Доїзд».' };
+  if (/доїх|доб|трансфер|автобус|одес|ізма|київ|виїзд|збір/.test(s)) return { content: 'Групи доїзду:\n\n- Ізмаїл → Одеса → Плай: автобус до Одеси, пересадка на спільний автобус\n- Одеса → Плай: спільний автобус, виїзд попередньо 6 грудня о 22:30\n- Київ → Плай: автомобіль\n\nТочки й час збору уточнюються. Повернення: виїзд з «Плаю» 10 грудня о 12:30, прибуття до Одеси 11 грудня близько 05:00 (попередньо). Деталі — у розділі «Доїзд».' };
   const dayHit = DAYS.find(d => s.includes(String(+d.slice(8))) || s.includes(WEEKDAY[d].toLowerCase().slice(0, 5)));
   const STOP = new Set(['коли', 'який', 'яка', 'які', 'яке', 'де', 'що', 'буде', 'відбувається', 'проходить', 'мені', 'можна', 'про', 'для', 'там', 'цей', 'грудня', 'розкажи', 'night', 'форум', 'форуму']);
   const words = s.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
@@ -712,14 +845,32 @@ function localAnswer(q) {
   }).filter(([sc]) => sc > 1).sort((a, b) => b[0] - a[0]);
   if (dayHit && scored.some(([, e]) => e.date === dayHit)) scored.splice(0, scored.length, ...scored.filter(([, e]) => e.date === dayHit));
   const top = scored.length ? scored.filter(([sc]) => sc >= scored[0][0] * .5).slice(0, 4).map(([, e]) => e) : [];
-  if (!top.length) return { content: 'У програмі не знайшов нічого за цим запитом. Спробуй інакше сформулювати або переглянь «Програму» й «Оголошення».' };
+  if (!top.length) return { content: 'У програмі не знайшов точної відповіді. Можу передати питання організаторам — натисни кнопку нижче.' };
   return { content: 'Ось що знайшлося в програмі (усі події — попередні):\n\n' + sortEv(top).map(e => `- **${e.title}** — ${e.date.slice(8)}.12, ${formatRange(e)}${e.venue ? ', ' + e.venue : ''} [[${e.id}]]`).join('\n') };
 }
 
 /* ============ admin ============ */
+const ADMIN_TABS = [['todo', 'Що заповнити'], ['questions', 'Питання'], ['announcements', 'Оголошення'], ['participants', 'Учасники'], ['unionize', 'Unionize'], ['events', 'Програма'], ['speakers', 'Спікери'], ['sponsors', 'Спонсори'], ['settings', 'Налаштування']];
+const GROUP_NAME = k => (S.admin.data?.transport || S.data.transport || []).find(t => t.key === k)?.title || '—';
+const meLink = code => location.origin + '/?c=' + encodeURIComponent(code);
+function adminTodo(d) {
+  const t = [];
+  if (!d.participants.length) t.push(['participants', 'Завантажте список учасників (ім’я, група доїзду, стіл, команда)']);
+  const noTable = d.participants.filter(p => !p.table).length; if (d.participants.length && noTable) t.push(['participants', `${noTable} учасникам не призначено стіл Unionize`]);
+  const noGroup = d.participants.filter(p => !p.group).length; if (d.participants.length && noGroup) t.push(['participants', `${noGroup} учасникам не вказано групу доїзду`]);
+  const noHost = d.unionize.tables.filter(x => x.n !== 1 && !x.host).length; if (noHost) t.push(['unionize', `Ведучі не вказані для ${noHost} столів`]);
+  const sp = d.speakers.filter(s => !s.photo || !s.role).length; if (sp) t.push(['speakers', `У ${sp} спікерів немає фото або посади`]);
+  if (!d.sponsors.length) t.push(['sponsors', 'Додайте спонсорів: лого, 1–2 речення, посилання']);
+  const meet = d.transport.filter(x => !x.meet).length; if (meet) t.push(['settings', `Точки і час збору не вказані для ${meet} груп доїзду`]);
+  if (!d.settings.coordinator) t.push(['settings', 'Контакт координатора для учасників']);
+  if (!d.settings.telegramUrl) t.push(['settings', 'Посилання на Telegram-канал (коли буде)']);
+  if (!d.settings.driveUrl) t.push(['settings', 'Посилання на Google Drive з фото (коли буде)']);
+  const open = d.questions.filter(q => q.status === 'open').length; if (open) t.unshift(['questions', `${open} питань учасників чекають на відповідь`]);
+  return t;
+}
 function viewAdmin() {
   const me = S.admin.me;
-  const head = pageHead('ОРГАНІЗАТОРАМ', 'Панель організатора.', 'Публікуйте оголошення, надсилайте push і змінюйте розклад без програмування.');
+  const head = pageHead('ОРГАНІЗАТОРАМ', 'Панель організатора.', 'Учасники, розсадка, питання, оголошення, програма, спікери й спонсори — без програмування.');
   if (!me) { loadAdmin(); return head + '<div class="wrap empty"><span class="spin"></span></div>'; }
   if (!me.admin) return `${head}<section class="wrap"><form class="tile login" id="login-form">
     <span class="kicker">${ic('lock')} ЗАХИЩЕНИЙ ДОСТУП</span><h3>Вхід організатора</h3><p>Пароль налаштовується на сервері. Учасникам він не потрібен.</p>
@@ -729,48 +880,150 @@ function viewAdmin() {
   </form></section>${footer()}`;
   const d = S.admin.data;
   if (!d) return head + '<div class="wrap empty"><span class="spin"></span></div>';
+  const todo = adminTodo(d);
+  const openQ = d.questions.filter(q => q.status === 'open').length;
+  const tab = S.admin.tab;
+  const views = { todo: () => adminTodoView(todo), questions: () => adminQuestions(d), announcements: () => adminAnnouncements(d), participants: () => adminParticipants(d), unionize: () => adminUnionize(d), events: () => adminEvents(d), speakers: () => adminPeople(d, 'speakers'), sponsors: () => adminPeople(d, 'sponsors'), settings: () => adminSettings(d) };
   return `${head}<section class="wrap">
-    <div class="stats"><div><b>${d.events.length}</b><small>Подій у базі</small></div><div><b>${d.subscriberCount}</b><small>Push-підписок</small></div><div><b>${d.announcements.length}</b><small>Оголошень</small></div></div>
-    <div class="filters"><button class="chip ${S.admin.tab === 'announcements' ? 'on' : ''}" data-atab="announcements">Повідомлення</button><button class="chip ${S.admin.tab === 'events' ? 'on' : ''}" data-atab="events">Програма</button><button class="chip" data-act="logout" style="margin-left:auto">Вийти</button></div>
-    ${S.admin.tab === 'announcements' ? `<div class="admin-2">
-      <form class="tile" id="ann-form"><span class="kicker">${ic('send')} НОВЕ ОГОЛОШЕННЯ</span><h3>Написати всім.</h3>
-        <label class="field"><span>Заголовок</span><input name="title" maxlength="90" placeholder="Наприклад: Зміна локації тренінгу" required></label>
-        <label class="field"><span>Текст повідомлення</span><textarea name="text" maxlength="650" rows="5" placeholder="Що саме учасникам потрібно знати?" required></textarea><small>Повідомлення залишиться в розділі «Оголошення» для всіх відвідувачів.</small></label>
-        <label class="field"><span>Важливість</span><select name="kind"><option value="info">Звичайне</option><option value="important">Важливе</option><option value="urgent">Термінове</option></select></label>
-        <label class="check"><input type="checkbox" name="push" checked> Надіслати push на телефони підписаних учасників</label>
-        <button class="btn btn-lift full" type="submit">${ic('send')} Опублікувати повідомлення</button>
-        <p class="fine">Підтвердження прийняття push-сервером не гарантує появу сповіщення на кожному телефоні. Оголошення у сайті доступне всім.</p>
-      </form>
-      <div class="tile"><span class="kicker">ОПУБЛІКОВАНІ</span>${d.announcements.length ? d.announcements.map(a => `<div class="adm-row"><div><b>${esc(a.title)}</b><small>${esc(fmtDate(a.createdAt))} · ${esc(a.kind)}</small><p>${esc(a.text)}</p></div><button class="icon-btn" data-del-ann="${esc(a.id)}" aria-label="Видалити ${esc(a.title)}">${ic('trash')}</button></div>`).join('') : '<p>Поки що нічого не опубліковано.</p>'}</div>
-    </div>` : `<div class="tile"><div class="sec-head row"><div><span class="kicker">ПОДІЇ ФОРУМУ</span></div><button class="btn btn-lift" data-edit="new">${ic('plus')} Додати подію</button></div>
-      ${sortEv(d.events).map(e => `<div class="adm-row"><div><b>${esc(e.title)}</b><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))} · ${esc(e.venue || 'Локація не встановлена')} · ${statusLabel(e.status)} · ${e.published !== false ? 'Видиме' : 'Приховане'}</small></div><button class="icon-btn" data-edit="${esc(e.id)}" aria-label="Редагувати ${esc(e.title)}">${ic('edit')}</button></div>`).join('')}</div>`}
+    <div class="stats"><div><b>${d.participants.length}</b><small>Учасників</small></div><div><b>${openQ}</b><small>Питань без відповіді</small></div><div><b>${d.subscriberCount}</b><small>Push-підписок</small></div></div>
+    <div class="filters admin-tabs">${ADMIN_TABS.map(([k, l]) => `<button class="chip ${tab === k ? 'on' : ''}" data-atab="${k}">${l}${k === 'questions' && openQ ? ` <span class="count">${openQ}</span>` : ''}${k === 'todo' && todo.length ? ` <span class="count">${todo.length}</span>` : ''}</button>`).join('')}<button class="chip" data-act="admin-push">${ic('bell')} Push мені про питання</button><button class="chip" data-act="logout">Вийти</button></div>
+    ${(views[tab] || views.todo)()}
   </section>${footer()}`;
+}
+function adminTodoView(todo) {
+  return `<div class="tile"><span class="kicker">КОНТРОЛЬ НАПОВНЕННЯ</span><h3>${todo.length ? 'Ще треба заповнити' : 'Усе заповнено ✓'}</h3>
+    ${todo.length ? `<ul class="todo">${todo.map(([tab, text]) => `<li><button class="link" data-atab="${tab}">${esc(text)} ${ic('arrow')}</button></li>`).join('')}</ul>` : '<p>Усі розділи мають дані. Claude знає відповіді на основні питання.</p>'}
+    <p class="fine">Чим повніші дані, тим точніше відповідає Claude: він бере інформацію саме звідси.</p></div>`;
+}
+function adminQuestions(d) {
+  const open = d.questions.filter(q => q.status === 'open'), done = d.questions.filter(q => q.status === 'answered');
+  return `<div class="admin-2">
+    <div class="tile"><span class="kicker">${ic('clock')} ЧЕКАЮТЬ НА ВІДПОВІДЬ · ${open.length}</span>
+      ${open.length ? open.map(q => `<form class="qa" data-qid="${esc(q.id)}">
+        <b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімний відвідувач')} · ${esc(fmtDate(q.createdAt))}</small>
+        ${q.draft ? `<details><summary>Що відповів Claude</summary><p class="fine">${esc(q.draft.replace(/\[\[ORG\]\]/g, ''))}</p></details>` : ''}
+        <label class="field"><span>Ваша відповідь (коротко)</span><textarea name="answer" rows="3" required></textarea></label>
+        <label class="check"><input type="checkbox" name="polish" checked> Claude допрацює текст (без нових фактів)</label>
+        <label class="check"><input type="checkbox" name="kb" checked> Додати в базу знань Claude</label>
+        <div class="row-btns"><button class="btn btn-lift" type="submit">${ic('send')} Відповісти</button><button class="btn btn-ghost" type="button" data-del-q="${esc(q.id)}">${ic('trash')}</button></div>
+      </form>`).join('') : '<p>Нових питань немає.</p>'}
+    </div>
+    <div class="tile"><span class="kicker">БАЗА ЗНАНЬ CLAUDE · ${d.knowledge.length}</span>
+      ${d.knowledge.length ? d.knowledge.map(k => `<div class="adm-row"><div><b>${esc(k.q)}</b><p>${esc(k.a)}</p></div><button class="icon-btn" data-del-kb="${esc(k.id)}" aria-label="Прибрати з бази знань">${ic('trash')}</button></div>`).join('') : '<p>Тут з’являтимуться ваші відповіді. Claude використовує їх для наступних учасників.</p>'}
+      ${done.length ? `<details><summary>Відповідені питання (${done.length})</summary>${done.map(q => `<div class="adm-row"><div><b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімно')}</small><p>${esc(q.final)}</p></div></div>`).join('')}</details>` : ''}
+    </div></div>`;
+}
+function adminAnnouncements(d) {
+  return `<div class="admin-2">
+    <form class="tile" id="ann-form"><span class="kicker">${ic('send')} НОВЕ ОГОЛОШЕННЯ</span><h3>Написати всім.</h3>
+      <label class="field"><span>Заголовок</span><input name="title" maxlength="90" placeholder="Наприклад: Зміна локації тренінгу" required></label>
+      <label class="field"><span>Текст повідомлення</span><textarea name="text" maxlength="650" rows="5" placeholder="Що саме учасникам потрібно знати?" required></textarea><small>Повідомлення залишиться в розділі «Оголошення», Claude теж його знатиме.</small></label>
+      <label class="field"><span>Важливість</span><select name="kind"><option value="info">Звичайне</option><option value="important">Важливе</option><option value="urgent">Термінове</option></select></label>
+      <label class="check"><input type="checkbox" name="push" checked> Надіслати push на телефони підписаних учасників</label>
+      <button class="btn btn-lift full" type="submit">${ic('send')} Опублікувати повідомлення</button>
+    </form>
+    <div class="tile"><span class="kicker">ОПУБЛІКОВАНІ</span>${d.announcements.length ? d.announcements.map(a => `<div class="adm-row"><div><b>${esc(a.title)}</b><small>${esc(fmtDate(a.createdAt))} · ${esc(a.kind)}</small><p>${esc(a.text)}</p></div><button class="icon-btn" data-del-ann="${esc(a.id)}" aria-label="Видалити ${esc(a.title)}">${ic('trash')}</button></div>`).join('') : '<p>Поки що нічого не опубліковано.</p>'}</div>
+  </div>`;
+}
+function adminParticipants(d) {
+  const evTitle = id => d.events.find(e => e.id === id)?.title || '';
+  const list = [...d.participants].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+  return `<div class="admin-2">
+    <form class="tile" id="import-form"><span class="kicker">${ic('download')} ІМПОРТ СПИСКУ</span><h3>Вставте таблицю</h3>
+      <p class="fine">Скопіюйте стовпці з Excel або Google Таблиці: <b>ім’я · група доїзду (Ізмаїл / Одеса / Київ) · стіл (1–9) · команда · кімната</b>. Перший рядок може бути заголовком. Учасник з тим самим ім’ям оновиться, а не задублюється.</p>
+      <label class="field"><span>Дані</span><textarea name="csv" rows="7" placeholder="Ім’я;Група;Стіл;Команда&#10;Іван Петренко;Одеса;3;Чорноморськ"></textarea></label>
+      <button class="btn btn-lift full" type="submit">Імпортувати</button></form>
+    <div class="tile"><span class="kicker">${ic('users')} УЧАСНИКИ · ${list.length}</span>
+      <div class="row-btns"><button class="btn btn-ghost" data-edit-p="new">${ic('plus')} Додати</button>${list.length ? `<button class="btn btn-ghost" data-act="export-codes">${ic('download')} Коди й посилання (CSV)</button>` : ''}</div>
+      ${list.map(p => `<div class="adm-row"><div><b>${esc(p.name)}</b><small>${esc(p.code)} · ${esc(GROUP_NAME(p.group))} · ${p.table ? `стіл ${p.table}, місце ${p.seat}` : 'без столу'}${p.team ? ' · ' + esc(p.team) : ''}</small>
+        <small>${Object.values(p.sessions || {}).map(evTitle).filter(Boolean).map(esc).join(' · ') || 'Сесії не обрані'}${p.lastLogin ? ' · заходив(ла)' : ''}</small></div>
+        <div class="adm-acts"><button class="icon-btn" data-copy="${esc(meLink(p.code))}" aria-label="Копіювати посилання для ${esc(p.name)}">${ic('share')}</button><button class="icon-btn" data-edit-p="${esc(p.id)}" aria-label="Редагувати ${esc(p.name)}">${ic('edit')}</button></div></div>`).join('') || '<p>Список порожній.</p>'}
+    </div></div>`;
+}
+function adminUnionize(d) {
+  return `<form class="tile" id="unionize-form"><span class="kicker">UNIONIZE · 9 СТОЛІВ</span><h3>Столи й ведучі</h3>
+    <p class="fine">Учасників за столи садять у вкладці «Учасники» (поле «Стіл»), місце призначається автоматично.</p>
+    <div class="utable-edit">${d.unionize.tables.map(t => { const seated = d.participants.filter(p => p.table === t.n).sort((a, b) => a.seat - b.seat); return `<fieldset><legend>Стіл ${t.n} · ${seated.length}/${t.capacity}</legend>
+      <label class="field"><span>${t.n === 1 ? 'Підпис' : 'Ведучий'}</span><input name="${t.n === 1 ? 'label' : 'host'}-${t.n}" value="${esc(t.n === 1 ? t.label : t.host)}"></label>
+      <label class="field"><span>Місць</span><input type="number" min="1" max="12" name="cap-${t.n}" value="${t.capacity}"></label>
+      <small>${seated.map(p => `${p.seat}. ${esc(p.name)}`).join('<br>') || 'нікого'}</small></fieldset>`; }).join('')}</div>
+    <button class="btn btn-lift" type="submit">Зберегти</button></form>`;
+}
+function adminEvents(d) {
+  return `<div class="tile"><div class="sec-head row"><div><span class="kicker">ПОДІЇ ФОРУМУ</span></div><button class="btn btn-lift" data-edit="new">${ic('plus')} Додати подію</button></div>
+    ${sortEv(d.events).map(e => `<div class="adm-row"><div><b>${esc(e.title)}</b><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))} · ${esc(e.venue || 'Локація не встановлена')} · ${statusLabel(e.status)}${e.capacity ? ` · ${(d.sessionCounts[e.id] || 0)}/${e.capacity} записано` : ''} · ${e.published !== false ? 'Видиме' : 'Приховане'}</small></div><button class="icon-btn" data-edit="${esc(e.id)}" aria-label="Редагувати ${esc(e.title)}">${ic('edit')}</button></div>`).join('')}</div>`;
+}
+function adminPeople(d, col) {
+  const sp = col === 'speakers';
+  return `<div class="tile"><div class="sec-head row"><div><span class="kicker">${sp ? 'СПІКЕРИ' : 'СПОНСОРИ'} · ${d[col].length}</span><p class="fine">${sp ? 'Заміна спікера — відредагуйте картку або видаліть її. Фото й лого — посиланням https://.' : 'Лого посиланням https://, 1–2 речення про спонсора і посилання на його сайт.'}</p></div><button class="btn btn-lift" data-edit-x="${col}:new">${ic('plus')} Додати</button></div>
+    ${[...d[col]].sort((a, b) => (a.order || 0) - (b.order || 0)).map(x => `<div class="adm-row"><div class="adm-person">${x.photo || x.logo ? `<img src="${esc(x.photo || x.logo)}" alt="">` : `<span>${esc(initials(x.name))}</span>`}<div><b>${esc(x.name)}</b><small>${esc(sp ? [x.role, x.org].filter(Boolean).join(' · ') || 'посада не вказана' : x.text || 'без опису')}</small></div></div><button class="icon-btn" data-edit-x="${col}:${esc(x.id)}" aria-label="Редагувати ${esc(x.name)}">${ic('edit')}</button></div>`).join('') || '<p>Поки порожньо.</p>'}</div>`;
+}
+function adminSettings(d) {
+  const s = d.settings;
+  return `<form class="tile" id="settings-form"><span class="kicker">НАЛАШТУВАННЯ</span><h3>Посилання, контакти, збір</h3>
+    <label class="field"><span>Контакт координатора для учасників</span><input name="coordinator" value="${esc(s.coordinator)}" placeholder="Ім’я, телефон або Telegram"></label>
+    <label class="field"><span>Telegram-канал форуму</span><input name="telegramUrl" value="${esc(s.telegramUrl)}" placeholder="https://t.me/..."></label>
+    <label class="field"><span>Google Drive з фото</span><input name="driveUrl" value="${esc(s.driveUrl)}" placeholder="https://drive.google.com/..."></label>
+    <label class="field"><span>Підпис кількості учасників на головній (порожньо — не показувати)</span><input name="participantsLabel" value="${esc(s.participantsLabel)}" placeholder="Наприклад: 50+ учасників"></label>
+    <span class="kicker">ГРУПИ ДОЇЗДУ</span>
+    ${d.transport.map(t => `<fieldset><legend>${esc(t.title)}</legend>
+      <label class="field"><span>Опис</span><input name="note-${t.key}" value="${esc(t.note)}"></label>
+      <label class="field"><span>Точка і час збору</span><input name="meet-${t.key}" value="${esc(t.meet)}" placeholder="Наприклад: 6 грудня, 18:00, автовокзал Ізмаїл"></label></fieldset>`).join('')}
+    <button class="btn btn-lift" type="submit">Зберегти</button></form>`;
 }
 async function loadAdmin() {
   try { S.admin.me = await api('/api/admin/me'); } catch { S.admin.me = { admin: false, enabled: false }; }
   if (S.admin.me.admin) { try { S.admin.data = await api('/api/admin/state'); } catch (e) { toast(e.message); } }
-  if (S.route.name === 'admin') render();
+  if (S.route.name === 'admin') { const y = scrollY; render(); scrollTo(0, y); }
 }
+function openDialog(html) { const dlg = $('#editor'); dlg.innerHTML = html; dlg.showModal(); }
+const dlgHead = t => `<div class="editor-head"><h2>${t}</h2><button type="button" class="icon-btn" data-act="close-editor" aria-label="Закрити">${ic('x')}</button></div>`;
 function openEditor(id) {
-  const blank = { id: '', title: '', date: DAYS[0], start: '', end: '', venue: '', details: '', status: 'tentative', track: 'all', published: true, posterTitle: '', teaser: '', why: '', speakerNames: '', category: '' };
+  const blank = { id: '', title: '', date: DAYS[0], start: '', end: '', venue: '', details: '', status: 'tentative', track: 'all', published: true, posterTitle: '', teaser: '', why: '', speakerNames: '', category: '', capacity: '', link: '' };
   const e = id === 'new' ? blank : { ...blank, ...S.admin.data.events.find(x => x.id === id) };
-  const f = (n, l, max, type = 'text') => `<label class="field"><span>${l}</span><input name="${n}" type="${type}" ${max ? `maxlength="${max}"` : ''} value="${esc(e[n] || '')}"></label>`;
+  const f = (n, l, max, type = 'text') => `<label class="field"><span>${l}</span><input name="${n}" type="${type}" ${max ? `maxlength="${max}"` : ''} value="${esc(e[n] ?? '')}"></label>`;
   const t = (n, l, max) => `<label class="field"><span>${l}</span><textarea name="${n}" maxlength="${max}" rows="3">${esc(e[n] || '')}</textarea></label>`;
-  const dlg = $('#editor');
-  dlg.innerHTML = `<form id="event-form" data-id="${esc(e.id || 'new')}" class="editor-body">
-    <div class="editor-head"><h2>${e.id ? 'Редагувати подію' : 'Нова подія'}</h2><button type="button" class="icon-btn" data-act="close-editor" aria-label="Закрити">${ic('x')}</button></div>
+  openDialog(`<form id="event-form" data-id="${esc(e.id || 'new')}" class="editor-body">${dlgHead(e.id ? 'Редагувати подію' : 'Нова подія')}
     ${f('title', 'Назва заходу', 130)}
     <div class="two-col"><label class="field"><span>Дата</span><select name="date">${DAYS.map(d => `<option value="${d}" ${d === e.date ? 'selected' : ''}>${d.slice(8)} грудня</option>`).join('')}</select></label>
     <label class="field"><span>Статус</span><select name="status">${[['tentative', 'Попередньо'], ['confirmed', 'Підтверджено'], ['canceled', 'Скасовано']].map(([k, v]) => `<option value="${k}" ${k === e.status ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <div class="two-col">${f('start', 'Початок', 0, 'time')}${f('end', 'Кінець', 0, 'time')}</div>
     ${f('venue', 'Локація', 90)}${t('details', 'Короткий опис для учасників', 600)}
+    <div class="two-col"><label class="field"><span>Тип події</span><select name="track"><option value="all" ${e.track === 'all' ? 'selected' : ''}>Спільна</option><option value="parallel" ${e.track === 'parallel' ? 'selected' : ''}>Паралельна сесія (із записом)</option></select></label>${f('capacity', 'Місць (для паралельної)', 0, 'number')}</div>
+    ${f('link', 'Посилання (https://)', 300)}
     <span class="kicker">АФІША ТА АНОНС</span>
-    ${f('category', 'Категорія (англ., напр. SKILL LAB)', 40)}${f('posterTitle', 'Постерний заголовок', 140)}${t('teaser', 'Анонс події', 650)}${t('why', 'Чому це цікаво учаснику', 500)}${f('speakerNames', 'Спікери / учасники (лише погоджені)', 220)}
-    <div class="two-col"><label class="field"><span>Тип події</span><select name="track"><option value="all" ${e.track === 'all' ? 'selected' : ''}>Спільна</option><option value="parallel" ${e.track === 'parallel' ? 'selected' : ''}>Паралельна сесія</option></select></label>
-    <label class="check"><input name="published" type="checkbox" ${e.published !== false ? 'checked' : ''}> Показувати учасникам</label></div>
+    ${f('category', 'Категорія (англ., напр. SKILL LAB)', 40)}${f('posterTitle', 'Постерний заголовок', 140)}${t('teaser', 'Анонс події', 650)}${t('why', 'Чому це цікаво учаснику', 500)}${f('speakerNames', 'Спікери / учасники (лише погоджені)', 260)}
+    <label class="check"><input name="published" type="checkbox" ${e.published !== false ? 'checked' : ''}> Показувати учасникам</label>
     <div class="row-btns"><button class="btn btn-lift" type="submit">Зберегти зміни</button>${e.id ? `<button class="btn btn-ghost" type="button" data-del-ev="${esc(e.id)}">${ic('trash')} Видалити</button>` : ''}</div>
-  </form>`;
-  dlg.showModal();
+  </form>`);
+}
+function openParticipant(id) {
+  const d = S.admin.data;
+  const p = id === 'new' ? { id: '', name: '', group: '', table: '', team: '', room: '', sessions: {} } : d.participants.find(x => x.id === id);
+  const slots = new Map();
+  for (const e of sortEv(d.events)) if (e.track === 'parallel' && e.start && e.published !== false) { const k = e.date + ' ' + e.start; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
+  openDialog(`<form id="participant-form" data-id="${esc(p.id || 'new')}" class="editor-body">${dlgHead(p.id ? esc(p.name) : 'Новий учасник')}
+    ${p.id ? `<div class="bar bar-info">${ic('lock')}<span>Код <b>${esc(p.code)}</b> · <button type="button" class="link" data-copy="${esc(meLink(p.code))}">копіювати посилання</button> · <button type="button" class="link" data-newcode="${esc(p.id)}">новий код</button></span></div>` : ''}
+    <label class="field"><span>Ім’я та прізвище</span><input name="name" value="${esc(p.name)}" required maxlength="80"></label>
+    <div class="two-col"><label class="field"><span>Група доїзду</span><select name="group"><option value="">—</option>${d.transport.map(t => `<option value="${t.key}" ${p.group === t.key ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select></label>
+    <label class="field"><span>Стіл Unionize</span><select name="table"><option value="">—</option>${d.unionize.tables.map(t => `<option value="${t.n}" ${p.table === t.n ? 'selected' : ''}>Стіл ${t.n}${t.n === 1 ? ' (керівництво та гості)' : ''}</option>`).join('')}</select></label></div>
+    <div class="two-col"><label class="field"><span>Команда</span><input name="team" value="${esc(p.team || '')}" maxlength="60"></label><label class="field"><span>Кімната</span><input name="room" value="${esc(p.room || '')}" maxlength="20"></label></div>
+    ${[...slots].map(([k, g]) => `<label class="field"><span>Сесія ${k.slice(8, 10)}.12, ${k.slice(11)}</span><select name="sess|${k}"><option value="">не обрано</option>${g.map(e => `<option value="${e.id}" ${p.sessions?.[k] === e.id ? 'selected' : ''}>${esc(e.title)}</option>`).join('')}</select></label>`).join('')}
+    <div class="row-btns"><button class="btn btn-lift" type="submit">Зберегти</button>${p.id ? `<button class="btn btn-ghost" type="button" data-del-p="${esc(p.id)}">${ic('trash')} Видалити</button>` : ''}</div>
+  </form>`);
+}
+function openPerson(col, id) {
+  const d = S.admin.data, sp = col === 'speakers';
+  const x = id === 'new' ? { id: '', name: '', role: '', org: '', photo: '', logo: '', url: '', text: '', events: [], order: 0 } : d[col].find(i => i.id === id);
+  const f = (n, l, ph = '') => `<label class="field"><span>${l}</span><input name="${n}" value="${esc(x[n] || '')}" placeholder="${ph}"></label>`;
+  openDialog(`<form id="person-form" data-col="${col}" data-id="${esc(x.id || 'new')}" class="editor-body">${dlgHead(x.id ? esc(x.name) : sp ? 'Новий спікер' : 'Новий спонсор')}
+    ${f('name', sp ? 'Ім’я та прізвище' : 'Назва')}
+    ${sp ? f('role', 'Посада') + f('org', 'Організація') + f('photo', 'Фото (посилання https://)', 'https://...') + f('logo', 'Лого організації (https://)', 'https://...')
+      : `<label class="field"><span>Хто вони (1–2 речення)</span><textarea name="text" rows="3" maxlength="300">${esc(x.text || '')}</textarea></label>` + f('logo', 'Лого (посилання https://)', 'https://...') + f('url', 'Сайт (https://)', 'https://...')}
+    ${f('order', 'Порядок показу (число)')}
+    ${sp ? `<fieldset><legend>Події спікера</legend><div class="ev-checks">${sortEv(d.events).filter(e => !isMinor(e) || e.speakerNames).map(e => `<label class="check"><input type="checkbox" name="ev" value="${e.id}" ${x.events?.includes(e.id) ? 'checked' : ''}> ${esc(e.date.slice(8))}.12 ${esc(e.title)}</label>`).join('')}</div></fieldset>` : ''}
+    <div class="row-btns"><button class="btn btn-lift" type="submit">Зберегти</button>${x.id ? `<button class="btn btn-ghost" type="button" data-del-x="${col}:${esc(x.id)}">${ic('trash')} Видалити</button>` : ''}</div>
+  </form>`);
 }
 
 /* ============ calendar / share ============ */
@@ -798,13 +1051,13 @@ async function share(e) {
 /* ============ push ============ */
 const b64ToU8 = s => { const p = '='.repeat((4 - s.length % 4) % 4); const r = atob((s + p).replace(/-/g, '+').replace(/_/g, '/')); return Uint8Array.from(r, c => c.charCodeAt(0)); };
 async function swReg() { return navigator.serviceWorker.register('/sw.js'); }
-async function subscribe() {
+async function subscribe(asAdmin = false) {
   try {
     const perm = await Notification.requestPermission();
     if (perm !== 'granted') throw new Error(perm === 'denied' ? 'Браузер заблокував сповіщення. Дозвольте їх у налаштуваннях сайту.' : 'Дозвіл на сповіщення не наданий.');
     const reg = await swReg(); await navigator.serviceWorker.ready;
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64ToU8(S.data.vapidPublicKey) });
-    await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify(sub) });
+    await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ ...sub.toJSON(), asker: S.asker, admin: asAdmin }) });
     toast('Сповіщення увімкнено!'); pushStatus();
   } catch (e) { toast(e.message); }
 }
@@ -879,8 +1132,8 @@ function parseRoute() {
   const [, name = '', arg = ''] = (location.hash.replace(/^#/, '') || '/').split('/');
   return { name: name || 'home', arg: decodeURIComponent(arg) };
 }
-const VIEWS = { home: viewHome, program: () => viewProgram(S.route.arg), event: () => viewEvent(S.route.arg), travel: viewTravel, info: viewInfo, updates: viewUpdates, my: viewMy, more: viewMore, ask: viewAsk, admin: viewAdmin };
-const TITLES = { home: 'MTWTU Youth Forum 2026 · Плай', program: 'Програма', event: 'Подія', travel: 'Доїзд', info: 'Корисне', updates: 'Оголошення', my: 'Мій маршрут', more: 'Меню', ask: 'Запитай Claude', admin: 'Організаторам' };
+const VIEWS = { home: viewHome, program: () => viewProgram(S.route.arg), event: () => viewEvent(S.route.arg), travel: viewTravel, info: viewInfo, updates: viewUpdates, me: viewMe, my: viewMe, more: viewMore, ask: viewAsk, admin: viewAdmin };
+const TITLES = { home: 'MTWTU Youth Forum 2026 · Плай', program: 'Програма', event: 'Подія', travel: 'Доїзд', info: 'Корисне', updates: 'Оголошення', me: 'Мій форум', my: 'Мій форум', more: 'Меню', ask: 'Запитай Claude', admin: 'Організаторам' };
 function render(scrollTop = false) {
   if (!S.data) return;
   const app = $('#app');
@@ -889,9 +1142,10 @@ function render(scrollTop = false) {
   app.innerHTML = v();
   app.dataset.view = S.route.name;
   document.title = S.route.name === 'event' && evById(S.route.arg) ? evById(S.route.arg).title + ' · MTWTU Youth Forum' : (S.route.name === 'home' ? TITLES.home : TITLES[S.route.name] + ' · MTWTU Youth Forum');
-  $$('[data-route]').forEach(a => a.classList.toggle('on', a.dataset.route === S.route.name || (S.route.name === 'event' && a.dataset.route === 'program') || (['travel', 'info', 'my', 'admin'].includes(S.route.name) && a.dataset.route === 'more' && a.closest('.dock'))));
+  $$('[data-route]').forEach(a => a.classList.toggle('on', a.dataset.route === S.route.name || (S.route.name === 'event' && a.dataset.route === 'program') || (['travel', 'info', 'updates', 'admin'].includes(S.route.name) && a.dataset.route === 'more' && a.closest('.dock'))));
   if (S.route.name === 'home') startTopo();
   if (S.route.name === 'info') pushStatus();
+  if (S.route.name === 'ask' && !S.myQuestionsLoaded) { S.myQuestionsLoaded = true; refreshMyQuestions().then(() => { if (S.route.name === 'ask' && S.myQuestions.length) render(); }); }
   if (S.route.name === 'ask') { const i = $('#ask-input'); i && matchMedia('(min-width: 900px)').matches && i.focus(); $('#chat')?.lastElementChild?.scrollIntoView({ block: 'end' }); }
   marks();
   if (scrollTop) scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
@@ -904,45 +1158,105 @@ function revealInit() {
 }
 addEventListener('hashchange', () => { S.route = parseRoute(); render(true); });
 
+/* ============ participant session ============ */
+async function refreshMe() {
+  try { const r = await api('/api/me'); S.me = r.me; } catch { /* offline: keep */ }
+}
+async function loginWithCode(code) {
+  const r = await api('/api/me/login', { method: 'POST', body: JSON.stringify({ code }) });
+  S.me = r.me; toast(`Вітаємо, ${S.me.name.split(' ')[0]}!`);
+  if ('serviceWorker' in navigator && 'PushManager' in window) { try { const reg = await swReg(); const sub = await reg.pushManager.getSubscription(); if (sub) await api('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ ...sub.toJSON(), asker: S.asker }) }); } catch { /* ignore */ } }
+}
+const rerender = () => { const y = scrollY; render(); scrollTo(0, y); };
+
 /* ============ events ============ */
 document.addEventListener('click', async ev => {
   const t = ev.target.closest('button, a'); if (!t) return;
   const d = t.dataset;
-  if (d.save) { ev.preventDefault(); S.saved.has(d.save) ? S.saved.delete(d.save) : S.saved.add(d.save); store.set('plai:saved', [...S.saved]); toast(S.saved.has(d.save) ? '★ Додано в мій маршрут' : 'Прибрано з маршруту'); const y = scrollY; render(); scrollTo(0, y); return; }
-  if (d.filter) { S.filter = d.filter; const y = scrollY; render(); scrollTo(0, y); return; }
-  if (d.city) { $$('[data-city]').forEach(b => { b.classList.toggle('on', b === t); b.setAttribute('aria-pressed', b === t); }); $('.route').innerHTML = routeCard(+d.city); return; }
-  if (d.share) { const e = evById(d.share); e && share(e); return; }
-  if (d.ics) { const e = evById(d.ics); e && ics([e], `MTWTU-${e.id}.ics`); return; }
-  if (d.icsDay) { ics(sortEv(events().filter(e => e.date === d.icsDay)), `MTWTU-${d.icsDay}.ics`); return; }
-  if (d.suggest) { ask(d.suggest); return; }
-  if (d.askAbout) { const e = evById(d.askAbout); setTimeout(() => ask(`Розкажи про «${e.title}» ${e.date.slice(8)}.12: що це, де і коли?`), 50); return; }
-  if (d.gal) { const g = $('.gallery'); g.scrollBy({ left: g.clientWidth * .8 * +d.gal, behavior: 'smooth' }); return; }
-  if (d.scroll) { ev.preventDefault(); const go = () => document.getElementById(d.scroll)?.scrollIntoView({ behavior: 'smooth' }); if (S.route.name !== 'home') { location.hash = '#/'; setTimeout(go, 120); } else go(); return; }
-  if (d.atab) { S.admin.tab = d.atab; render(); return; }
-  if (d.edit) { openEditor(d.edit); return; }
-  if (d.delAnn) { if (!confirm('Видалити оголошення?')) return; try { await api('/api/admin/announcements/' + d.delAnn, { method: 'DELETE' }); await loadAdmin(); load(); } catch (e) { toast(e.message); } return; }
-  if (d.delEv) { if (!confirm('Видалити подію назавжди?')) return; try { await api('/api/admin/events/' + d.delEv, { method: 'DELETE' }); $('#editor').close(); await loadAdmin(); load(); } catch (e) { toast(e.message); } return; }
-  switch (d.act) {
-    case 'film': { const dlg = $('#film'); const fr = document.createElement('iframe'); fr.src = 'https://player.vimeo.com/video/1175179620?dnt=1&autoplay=1'; fr.allow = 'autoplay; fullscreen; picture-in-picture'; fr.title = 'Відео Молодіжної ради ПРМТУ'; $('.film-frame').replaceChildren(fr); dlg.addEventListener('close', () => $('.film-frame').replaceChildren(), { once: true }); dlg.showModal(); break; }
-    case 'reload': await load(); render(); break;
-    case 'sub': subscribe(); break;
-    case 'unsub': unsubscribe(); break;
-    case 'theme': toggleTheme(); break;
-    case 'ics-mine': ics(sortEv(events().filter(e => S.saved.has(e.id))), 'MTWTU-my-route.ics'); break;
-    case 'clear-mine': S.saved.clear(); store.set('plai:saved', []); render(); break;
-    case 'logout': await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); S.admin = { me: null, data: null, tab: 'announcements' }; render(); break;
-    case 'close-editor': $('#editor').close(); break;
-  }
+  try {
+    if (d.sess !== undefined) {
+      ev.preventDefault(); t.disabled = true;
+      const r = await api('/api/me/session', { method: 'POST', body: JSON.stringify({ slot: d.sess, eventId: d.ev || null }) });
+      S.me = r.me; S.data.sessionCounts = r.sessionCounts; toast(d.ev ? 'Ви записані ✓' : 'Запис скасовано'); rerender(); return;
+    }
+    if (d.filter) { S.filter = d.filter; rerender(); return; }
+    if (d.share) { const e = evById(d.share); e && share(e); return; }
+    if (d.ics) { const e = evById(d.ics); e && ics([e], `MTWTU-${e.id}.ics`); return; }
+    if (d.icsDay) { ics(sortEv(events().filter(e => e.date === d.icsDay)), `MTWTU-${d.icsDay}.ics`); return; }
+    if (d.suggest) { ask(d.suggest); return; }
+    if (d.escalate !== undefined) { escalate(+d.escalate); return; }
+    if (d.askAbout) { const e = evById(d.askAbout); setTimeout(() => ask(`Розкажи про «${e.title}» ${e.date.slice(8)}.12: що це, де і коли?`), 50); return; }
+    if (d.gal) { const g = $('.gallery'); g.scrollBy({ left: g.clientWidth * .8 * +d.gal, behavior: 'smooth' }); return; }
+    if (d.scroll) { ev.preventDefault(); const go = () => document.getElementById(d.scroll)?.scrollIntoView({ behavior: 'smooth' }); if (S.route.name !== 'home') { location.hash = '#/'; setTimeout(go, 120); } else go(); return; }
+    if (d.copy) { ev.preventDefault(); try { await navigator.clipboard.writeText(d.copy); toast('Посилання скопійовано'); } catch { toast(d.copy); } return; }
+    /* admin */
+    if (d.atab) { S.admin.tab = d.atab; rerender(); return; }
+    if (d.edit) { openEditor(d.edit); return; }
+    if (d.editP) { openParticipant(d.editP); return; }
+    if (d.editX) { const [col, id] = d.editX.split(':'); openPerson(col, id); return; }
+    if (d.newcode) { if (!confirm('Створити новий код? Старий перестане працювати.')) return; await api(`/api/admin/participants/${d.newcode}/code`, { method: 'POST', body: '{}' }); $('#editor').close(); await loadAdmin(); openParticipant(d.newcode); return; }
+    if (d.delP) { if (!confirm('Видалити учасника?')) return; await api('/api/admin/participants/' + d.delP, { method: 'DELETE' }); $('#editor').close(); await loadAdmin(); return; }
+    if (d.delX) { const [col, id] = d.delX.split(':'); if (!confirm('Видалити?')) return; await api(`/api/admin/${col}/${id}`, { method: 'DELETE' }); $('#editor').close(); await loadAdmin(); load(); return; }
+    if (d.delAnn) { if (!confirm('Видалити оголошення?')) return; await api('/api/admin/announcements/' + d.delAnn, { method: 'DELETE' }); await loadAdmin(); load(); return; }
+    if (d.delQ) { if (!confirm('Видалити питання?')) return; await api('/api/admin/questions/' + d.delQ, { method: 'DELETE' }); await loadAdmin(); return; }
+    if (d.delKb) { await api('/api/admin/knowledge/' + d.delKb, { method: 'DELETE' }); await loadAdmin(); return; }
+    if (d.delEv) { if (!confirm('Видалити подію назавжди?')) return; await api('/api/admin/events/' + d.delEv, { method: 'DELETE' }); $('#editor').close(); await loadAdmin(); load(); return; }
+    switch (d.act) {
+      case 'film': { const dlg = $('#film'); const fr = document.createElement('iframe'); fr.src = 'https://player.vimeo.com/video/1175179620?dnt=1&autoplay=1'; fr.allow = 'autoplay; fullscreen; picture-in-picture'; fr.title = 'Відео Молодіжної ради ПРМТУ'; $('.film-frame').replaceChildren(fr); dlg.addEventListener('close', () => $('.film-frame').replaceChildren(), { once: true }); dlg.showModal(); break; }
+      case 'reload': await load(); render(); break;
+      case 'sub': subscribe(); break;
+      case 'unsub': unsubscribe(); break;
+      case 'theme': toggleTheme(); break;
+      case 'me-logout': await api('/api/me/logout', { method: 'POST' }); S.me = null; toast('Ви вийшли'); render(); break;
+      case 'admin-push': subscribe(true); break;
+      case 'export-codes': {
+        const rows = [['Ім’я', 'Код', 'Посилання', 'Група', 'Стіл', 'Місце'], ...S.admin.data.participants.map(p => [p.name, p.code, meLink(p.code), GROUP_NAME(p.group), p.table || '', p.seat || ''])];
+        const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+        const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: 'MTWTU-forum-codes.csv' });
+        document.body.append(a); a.click(); a.remove(); break;
+      }
+      case 'logout': await api('/api/admin/logout', { method: 'POST' }).catch(() => {}); S.admin = { me: null, data: null, tab: 'todo' }; render(); break;
+      case 'close-editor': $('#editor').close(); break;
+    }
+  } catch (e) { toast(e.message); t.disabled = false; }
 });
 document.addEventListener('submit', async ev => {
   const f = ev.target; ev.preventDefault();
-  const data = Object.fromEntries(new FormData(f));
+  const fd = new FormData(f), data = Object.fromEntries(fd);
   try {
     if (f.id === 'ask-form') { const i = $('#ask-input'); const q = i.value; i.value = ''; i.style.height = ''; ask(q); return; }
+    if (f.id === 'code-form') { await loginWithCode(data.code); render(); return; }
     if (f.id === 'login-form') { await api('/api/admin/login', { method: 'POST', body: JSON.stringify(data) }); S.admin.me = null; await loadAdmin(); toast('Вітаємо!'); return; }
     if (f.id === 'ann-form') { const r = await api('/api/admin/announcements', { method: 'POST', body: JSON.stringify({ ...data, push: !!data.push }) }); toast(r.push ? `Опубліковано · push: ${r.push.sent} надіслано` : 'Опубліковано'); await load(); await loadAdmin(); return; }
-    if (f.id === 'event-form') { const id = f.dataset.id; data.published = !!data.published; await api(id === 'new' ? '/api/admin/events' : '/api/admin/events/' + id, { method: id === 'new' ? 'POST' : 'PUT', body: JSON.stringify(data) }); $('#editor').close(); toast('Збережено'); await load(); await loadAdmin(); }
-  } catch (e) { toast(e.message); }
+    if (f.id === 'event-form') { const id = f.dataset.id; data.published = !!data.published; await api(id === 'new' ? '/api/admin/events' : '/api/admin/events/' + id, { method: id === 'new' ? 'POST' : 'PUT', body: JSON.stringify(data) }); $('#editor').close(); toast('Збережено'); await load(); await loadAdmin(); return; }
+    if (f.id === 'import-form') { const r = await api('/api/admin/participants/import', { method: 'POST', body: JSON.stringify(data) }); toast(`Імпортовано: ${r.added}${r.errors.length ? ` · помилок: ${r.errors.length}` : ''}`); if (r.errors.length) alert(r.errors.join('\n')); await loadAdmin(); load(); return; }
+    if (f.id === 'participant-form') {
+      const id = f.dataset.id, sessions = {};
+      for (const [k, v] of fd.entries()) if (k.startsWith('sess|')) sessions[k.slice(5)] = v;
+      const body = { name: data.name, group: data.group, table: data.table, team: data.team, room: data.room, sessions };
+      await api(id === 'new' ? '/api/admin/participants' : '/api/admin/participants/' + id, { method: id === 'new' ? 'POST' : 'PUT', body: JSON.stringify(body) });
+      $('#editor').close(); toast('Збережено'); await loadAdmin(); load(); return;
+    }
+    if (f.id === 'person-form') {
+      const { col, id } = f.dataset; const body = { ...data, events: fd.getAll('ev') }; delete body.ev;
+      await api(id === 'new' ? `/api/admin/${col}` : `/api/admin/${col}/${id}`, { method: id === 'new' ? 'POST' : 'PUT', body: JSON.stringify(body) });
+      $('#editor').close(); toast('Збережено'); await loadAdmin(); load(); return;
+    }
+    if (f.id === 'unionize-form') {
+      const tables = S.admin.data.unionize.tables.map(t => ({ n: t.n, host: data['host-' + t.n] ?? t.host, label: data['label-' + t.n] ?? t.label, capacity: data['cap-' + t.n] }));
+      await api('/api/admin/unionize', { method: 'PUT', body: JSON.stringify({ tables }) }); toast('Збережено'); await loadAdmin(); load(); return;
+    }
+    if (f.id === 'settings-form') {
+      const transport = S.admin.data.transport.map(t => ({ key: t.key, meet: data['meet-' + t.key], note: data['note-' + t.key] }));
+      await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ coordinator: data.coordinator, telegramUrl: data.telegramUrl, driveUrl: data.driveUrl, participantsLabel: data.participantsLabel, transport }) });
+      toast('Збережено'); await loadAdmin(); load(); return;
+    }
+    if (f.classList.contains('qa')) {
+      const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Надсилаємо…';
+      const r = await api(`/api/admin/questions/${f.dataset.qid}/answer`, { method: 'POST', body: JSON.stringify({ answer: data.answer, polish: !!data.polish, addToKnowledge: !!data.kb }) });
+      toast(`Відповідь надіслано${r.push?.sent ? ` · push: ${r.push.sent}` : ''}`); await loadAdmin(); return;
+    }
+  } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
 });
 document.addEventListener('input', e => { if (e.target.id === 'ask-input') { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
 document.addEventListener('keydown', e => { if (e.target.id === 'ask-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ask-form').requestSubmit(); } });
@@ -962,14 +1276,18 @@ setInterval(() => {
   const cd = countdown();
   for (const k of ['d', 'h', 'm', 's']) { const el = $(`[data-cd="${k}"]`); if (el) el.textContent = pad(cd[k]); }
 }, 1000);
-setInterval(async () => { await load(true); if (!['ask', 'admin'].includes(S.route.name) && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,textarea,select')) { const y = scrollY; render(); scrollTo(0, y); } }, 60000);
+setInterval(async () => { await load(true); if (S.me) await refreshMe(); if (!['ask', 'admin'].includes(S.route.name) && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,textarea,select')) { const y = scrollY; render(); scrollTo(0, y); } }, 60000);
 
 /* ============ boot ============ */
 (async () => {
   S.route = parseRoute();
   if (S.data) render();
   else $('#app').innerHTML = '<div class="boot"><span class="spin"></span><p>Завантажуємо твій форум…</p></div>';
-  const ok = await load(); if (ok) render();
+  const code = new URLSearchParams(location.search).get('c');
+  if (code) { history.replaceState(null, '', '/' + (location.hash || '#/me')); if (!location.hash || location.hash === '#/') location.hash = '#/me'; S.route = parseRoute(); }
+  const [ok] = await Promise.all([load(), refreshMe()]);
+  if (code) { try { await loginWithCode(code); } catch (e) { toast(e.message); } }
+  if (ok) render();
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();
 })();

@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;700;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=1">
+  <link rel="stylesheet" href="/styles.css?v=2">
   <title>MTWTU Youth Forum 2026 · Плай</title>
 </head>
 <body>
@@ -30,7 +30,7 @@
       <a href="#/travel" data-route="travel">Доїзд</a>
       <a href="#/info" data-route="info">Корисне</a>
       <a href="#/updates" data-route="updates">Оголошення<span class="dot" hidden></span></a>
-      <a href="#/my" data-route="my">Мій маршрут<span class="count" hidden></span></a>
+      <a href="#/me" data-route="me">Мій форум<span class="dot me-dot" hidden style="background:var(--t-green)"></span></a>
     </nav>
     <div class="top-actions">
       <a class="ask-pill" href="#/ask" data-route="ask"><span class="spark" aria-hidden="true"></span>Запитай Claude</a>
@@ -44,8 +44,8 @@
     <a href="#/" data-route="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 20 8-14 5 8 3-4 4 10Z"/></svg><span>Плай</span></a>
     <a href="#/program" data-route="program"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"/></svg><span>Програма</span></a>
     <a href="#/ask" data-route="ask" class="dock-ask"><span class="dock-orb" aria-hidden="true"><span class="spark"></span></span><span>Claude</span></a>
-    <a href="#/updates" data-route="updates"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"/></svg><span>Новини</span><span class="dot" hidden></span></a>
-    <a href="#/more" data-route="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>Ще</span></a>
+    <a href="#/me" data-route="me"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Мій форум</span></a>
+    <a href="#/more" data-route="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>Ще</span><span class="dot" hidden></span></a>
   </nav>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
@@ -54,6 +54,6 @@
     <div class="film-frame"></div>
   </dialog>
   <dialog id="editor" class="editor" aria-label="Редагування події"></dialog>
-  <script src="/app.js?v=1" defer></script>
+  <script src="/app.js?v=2" defer></script>
 </body>
 </html>
