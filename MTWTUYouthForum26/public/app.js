@@ -5,7 +5,10 @@
 /* ============ constants ============ */
 const FORUM_START = Date.parse('2026-12-07T00:00:00+02:00');
 const DAYS = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10'];
-const WEEKDAY = { '2026-12-07': 'Понеділок', '2026-12-08': 'Вівторок', '2026-12-09': 'Середа', '2026-12-10': 'Четвер' };
+const ALL_DAYS = ['2026-12-06', '2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10', '2026-12-11'];
+const CHAPTER_DAYS = { '2026-12-07': ['2026-12-06', '2026-12-07'], '2026-12-08': ['2026-12-08'], '2026-12-09': ['2026-12-09'], '2026-12-10': ['2026-12-10', '2026-12-11'] };
+const GROUP_LABEL = { izmail: 'учасники з Ізмаїла', odesa: 'учасники з Одеси', kyiv: 'учасники з Києва' };
+const WEEKDAY = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', '2026-12-07': 'Понеділок', '2026-12-08': 'Вівторок', '2026-12-09': 'Середа', '2026-12-10': 'Четвер' };
 const CHAPTERS = [
   { id: '2026-12-07', idx: '01', small: 'ПРИБУТТЯ', name: 'Знайомство', tag: 'Починається нова історія', sub: 'Від реєстрації до першого спільного вечора.', trail: 'green', trailName: 'Зелена траса', trailNote: 'М’який старт: знайомимось і заселяємось.' },
   { id: '2026-12-08', idx: '02', small: 'ЛЮДИ ТА ІДЕЇ', name: 'У русі', tag: 'Досвід, який проживаємо разом', sub: 'Дискусії, практичні блоки, Unionize і Bowling Night.', trail: 'blue', trailName: 'Синя траса', trailNote: 'Набираємо швидкість: найнасиченіший день.' },
@@ -14,10 +17,10 @@ const CHAPTERS = [
 ];
 const HIGHLIGHTS = ['082', '085', '086', '088', '08d', '093', '095', '097', '09a'];
 const PLACES = [
-  ['Великий зал', 'Відкриття, Unionize та загальні сесії.'],
-  ['Малий зал', 'Паралельні тренінги.'],
+  ['Велика зала', 'Відкриття, Unionize та загальні сесії.'],
+  ['Мала зала', 'Паралельні тренінги.'],
   ['Ресторан', 'Основні прийоми їжі.'],
-  ['Боулінг', 'Вечірня активність 8 грудня.'],
+  ['Боулінг', 'Bowling Night 8 грудня.'],
   ['Рецепція / готель', 'Прибуття та поселення.'],
   ['Екоферма', 'Екскурсія 9 грудня; місце збору уточнюється.'],
   ['Приватний event space', 'Фінальна вечірка 9 грудня.']
@@ -47,10 +50,12 @@ const mins = t => { if (!t) return null; const [h, m] = t.split(':').map(Number)
 const endMins = e => { const s = mins(e.start), en = mins(e.end); return en == null ? null : (s != null && en < s ? en + 1440 : en); };
 const formatRange = e => e.start && e.end ? `${e.start}–${e.end}${e.end < e.start ? ' (+1 день)' : ''}` : e.start ? `з ${e.start}` : e.end ? `до ${e.end}` : 'Час уточнюється';
 const statusLabel = s => s === 'confirmed' ? 'Підтверджено' : s === 'canceled' ? 'Скасовано' : 'Попередньо';
-const sortEv = list => [...list].sort((a, b) => a.date.localeCompare(b.date) || (mins(a.start) ?? -1) - (mins(b.start) ?? -1) || a.id.localeCompare(b.id));
-const chapterOf = d => CHAPTERS.find(c => c.id === d) || CHAPTERS[0];
+const sortKey = e => e.seq ?? mins(e.start) ?? -1;
+const sortEv = list => [...list].sort((a, b) => a.date.localeCompare(b.date) || sortKey(a) - sortKey(b) || a.id.localeCompare(b.id));
+const chapterOf = d => CHAPTERS.find(c => (CHAPTER_DAYS[c.id] || [c.id]).includes(d)) || CHAPTERS[0];
 const fmtDate = iso => { try { return new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); } catch { return ''; } };
 const isMinor = e => !e.feature && !HIGHLIGHTS.includes(e.id);
+const forMe = e => !e.group || !S.me || S.me.group === e.group;
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ICON = {
@@ -313,7 +318,7 @@ function viewHome() {
       </div>
       <div class="claude-demo" aria-hidden="true">
         <div class="bubble me">Що в мене 8 грудня о 12:00?</div>
-        <div class="bubble ai"><span class="spark"></span><span>О 12:00 — дві паралельні сесії: <b>Медіація</b> (Малий зал) і <b>CV</b> (Великий зал). Обидві попередні; розподіл учасників ще підтверджується.</span></div>
+        <div class="bubble ai"><span class="spark"></span><span>О 12:00 — дві паралельні сесії: тренінги <b>«Медіація»</b> (Мала зала) і <b>«CV»</b> (Велика зала), до 25 учасників у кожному. Записатися можна в «Мій форум».</span></div>
         <div class="chips">${SUGGESTIONS.slice(0, 3).map(s => `<span>${esc(s)}</span>`).join('')}</div>
       </div>
     </div>
@@ -431,8 +436,8 @@ function unionizeMap() {
       const isMe = mine && me.seat === k + 1, filled = k < (t.taken || 0);
       return `<circle cx="${sx}" cy="${sy}" r="12" class="seat ${isMe ? 'me' : filled ? 'taken' : ''}"/>${isMe ? `<text x="${sx}" y="${(+sy + 4).toFixed(1)}" class="seat-me-t">Ви</text>` : ''}`;
     }).join('');
-    const label = t.n === 1 ? (t.label || 'Керівництво') : (t.host || '');
-    return `<g class="utable ${mine ? 'mine' : ''}"><circle cx="${x}" cy="${y}" r="54" class="tbl"/><rect x="${x - 10}" y="${y - 104}" width="20" height="20" rx="5" class="host"/>${seats}<text x="${x}" y="${y - 4}" class="tn">Стіл ${t.n}</text><text x="${x}" y="${y + 17}" class="tl">${esc(label.length > 16 ? label.slice(0, 15) + '…' : label)}</text></g>`;
+    const label = t.host || (t.n === 1 ? (t.label || 'Керівництво') : '');
+    return `<g class="utable ${mine ? 'mine' : ''}"><circle cx="${x}" cy="${y}" r="54" class="tbl"/><rect x="${x - 10}" y="${y - 104}" width="20" height="20" rx="5" class="host"/>${seats}<text x="${x}" y="${y - 4}" class="tn">Стіл ${t.n}</text><text x="${x}" y="${y + 17}" class="tl">${esc(label.length > 19 ? label.slice(0, 18) + '…' : label)}</text></g>`;
   }).join('');
   return `<figure class="umap"><svg viewBox="0 0 800 760" role="img" aria-label="Схема залу Unionize: 9 столів, вид зверху">${g}</svg>
     <figcaption><span><i class="lg lg-host"></i>Ведучий</span><span><i class="lg lg-taken"></i>Зайняте місце</span><span><i class="lg lg-me"></i>Ваше місце</span></figcaption></figure>`;
@@ -442,7 +447,7 @@ function unionizePanel() {
   if (!S.me.table) return `<div class="bar bar-info">${ic('info')}<span>Ваше місце на Unionize ще не призначене. Розсадку опублікують організатори.</span></div>`;
   const t = S.me.tableInfo || {};
   return `<div class="tile my-table"><span class="kicker">ВАШЕ МІСЦЕ</span><h3>Стіл ${S.me.table} · місце ${S.me.seat}</h3>
-    <p>${t.n === 1 ? esc(t.label || 'Керівництво та гості') : `Ведучий: ${esc(t.host || 'уточнюється')}`}</p>
+    <p>Ведучий: ${esc(t.host || 'уточнюється')}${t.n === 1 ? ` · ${esc(t.label || 'керівництво та гості')}` : ''}</p>
     ${S.me.neighbours.length ? `<p class="fine">За столом: ${S.me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}</div>`;
 }
 
@@ -451,16 +456,21 @@ function viewProgram(day) {
   if (S.filter === 'mine') S.filter = 'all';
   const ch = chapterOf(day);
   const L = liveState();
-  const all = sortEv(events().filter(e => e.date === day));
-  const list = S.filter === 'key' ? all.filter(e => !isMinor(e)) : all;
+  const days = CHAPTER_DAYS[day] || [day];
+  const all = sortEv(events().filter(e => days.includes(e.date)));
+  const list = S.filter === 'key' ? all.filter(e => !isMinor(e) || e.date !== day) : all;
   const slots = new Map();
-  for (const e of list) { const k = e.start || 'до ' + (e.end || 'уточнення'); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
+  for (const e of list) {
+    const t = e.start || (e.end ? 'до ' + e.end : '—');
+    const k = (e.date !== day ? e.date.slice(8) + '.12' + (t !== '—' ? ' · ' + t : '') : t) + (e.start ? '' : '#' + e.id);
+    if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e);
+  }
   const rows = [...slots].map(([time, group]) => {
     const isNow = group.some(e => L.current?.id === e.id);
     const past = (L.day === day && group.every(e => endMins(e) != null && endMins(e) <= L.now)) || L.day > day;
     const parallel = group.length > 1 && group.every(e => e.track === 'parallel');
     return `<section class="slot ${isNow ? 'is-now' : ''} ${past ? 'is-past' : ''}">
-      <div class="slot-time"><b>${esc(time)}</b>${parallel ? '<small>Паралельні сесії</small>' : ''}${isNow ? '<small class="now-tag"><span class="live-dot"></span>зараз</small>' : ''}</div>
+      <div class="slot-time"><b>${esc(time.split('#')[0])}</b>${group[0].group ? `<small>${esc(GROUP_LABEL[group[0].group] || '')}</small>` : ''}${parallel ? '<small>Паралельні сесії</small>' : ''}${isNow ? '<small class="now-tag"><span class="live-dot"></span>зараз</small>' : ''}</div>
       <div><div class="slot-cards ${group.length > 1 ? 'two' : ''}">${group.map(e => isMinor(e) && group.length === 1 ? rowMinor(e) : poster(e, 'poster-row')).join('')}</div>
       ${parallel ? sessionBar(slotKeyOf(group[0]), group) : ''}</div>
     </section>`;
@@ -477,7 +487,7 @@ function viewProgram(day) {
     <div><span class="kicker">ГЛАВА ${ch.idx} / ${esc(ch.small)} · ${esc(ch.trailName).toUpperCase()}</span><h2>${esc(ch.name)}</h2><p>${esc(ch.sub)}</p></div>
     <strong aria-hidden="true">${day.slice(8)}</strong>
   </section></div>
-  <div class="wrap">${dayProfile(all, day)}</div>
+  <div class="wrap">${dayProfile(all.filter(e => e.date === day), day)}</div>
   <div class="wrap filters" role="group" aria-label="Фільтр подій">
     ${[['all', 'Усе'], ['key', 'Головне']].map(([k, l]) => `<button class="chip ${S.filter === k ? 'on' : ''}" data-filter="${k}" aria-pressed="${S.filter === k}">${l}</button>`).join('')}
     <button class="chip" data-ics-day="${day}">${ic('cal')} Увесь день у календар</button>
@@ -486,7 +496,7 @@ function viewProgram(day) {
   ${footer()}`;
 }
 function rowMinor(e) {
-  return `<a class="minor" href="#/event/${esc(e.id)}"><span>${esc(e.title)}</span><small>${esc(formatRange(e))}${e.venue ? ' · ' + esc(e.venue) : ''}</small><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></a>`;
+  return `<a class="minor" href="#/event/${esc(e.id)}"><span>${esc(e.title)}</span><small>${e.date === '2026-12-06' || e.date === '2026-12-11' ? esc(e.date.slice(8)) + '.12 · ' : ''}${esc(formatRange(e))}${e.venue ? ' · ' + esc(e.venue) : ''}</small><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></a>`;
 }
 
 function viewEvent(id) {
@@ -579,7 +589,8 @@ function viewTravel() {
     <div class="routes">${(S.data.transport || []).map(transportCard).join('')}</div>
     <div class="tile" style="margin-top:14px"><span class="kicker">${ic('clock')} ПОВЕРНЕННЯ</span><ol class="legs">
       <li><b>10 грудня · 12:30</b><span>Попередній час виїзду з «Плаю». Обід з собою.</span></li>
-      <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси. Може змінитися.</span></li>
+      <li><b>11 грудня · 05:00</b><span>Орієнтовне прибуття до Одеси.</span></li>
+      <li><b>11 грудня</b><span>Учасники з Ізмаїла: готель Leomare, далі автобус Одеса → Ізмаїл (час уточнюється).</span></li>
     </ol></div>
   </section>
   <section class="wrap sec">
@@ -613,7 +624,8 @@ function viewInfo() {
       <span class="kicker">${ic('bus')} BEFORE YOU GO</span>
       <h3>Трансфер та від’їзд</h3>
       <ol class="legs">
-        <li><b>06 грудня · 22:30</b><span>Попередній час виїзду спільного автобуса з Одеси. Точка збору уточнюється.</span></li>
+        <li><b>06 грудня</b><span>Учасники з Ізмаїла: автобус Ізмаїл → Одеса, розміщення в готелі Leomare.</span></li>
+        <li><b>06 грудня · 22:30</b><span>Спільний автобус Одеса → «Плай» для учасників з Одеси та Ізмаїла.</span></li>
         <li><b>10 грудня · 12:30</b><span>Попередній час виїзду з «Плаю». Обід з собою.</span></li>
         <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси. Може змінитися.</span></li>
       </ol>
@@ -673,9 +685,12 @@ function myAgenda() {
   for (const e of events()) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   const items = [];
   const tr = me.transport;
-  items.push({ date: '2026-12-06', time: me.group === 'odesa' || me.group === 'izmail' ? '22:30' : '', title: tr ? `Виїзд: ${tr.title}` : 'Виїзд на форум', sub: tr?.meet ? `Збір: ${tr.meet}` : (me.group === 'izmail' ? 'Спільний автобус з Одеси о 22:30 (попередньо). Час виїзду з Ізмаїла уточнюється.' : me.group === 'kyiv' ? 'Час виїзду з Києва уточнюється.' : 'Точка і час збору уточнюються.'), kind: 'travel' });
+  if (me.group === 'kyiv') items.push({ date: '2026-12-06', time: '', title: tr ? `Виїзд: ${tr.title}` : 'Виїзд на форум', sub: tr?.meet ? `Збір: ${tr.meet}` : (me.group === 'izmail' ? 'Автобус Ізмаїл → Одеса, готель Leomare, о 22:30 спільний автобус до «Плаю». Час виїзду з Ізмаїла уточнюється.' : me.group === 'kyiv' ? 'Час виїзду з Києва уточнюється.' : 'Точка і час збору уточнюються.'), kind: 'travel' });
   for (const e of sortEv(events())) {
-    if (e.status === 'canceled') continue;
+    if (e.status === 'canceled' || !forMe(e)) continue;
+    if (me.group === 'kyiv' && ['061', '062', '063', '111'].includes(e.id)) continue;
+    if (e.id === '098g') continue;
+    if (e.id === '063' && tr?.meet) { items.push({ date: e.date, time: e.start, title: e.title, sub: `Збір: ${tr.meet}`, kind: 'travel', link: '#/event/063' }); continue; }
     if (e.track === 'parallel' && e.start) {
       const k = slotKeyOf(e); const chosen = me.sessions?.[k];
       if (chosen && chosen !== e.id) continue;
@@ -684,7 +699,6 @@ function myAgenda() {
     }
     items.push({ date: e.date, time: e.start || (e.end ? 'до ' + e.end : ''), title: e.title, sub: e.unionize && me.table ? `${e.venue} · стіл ${me.table}, місце ${me.seat}` : (e.venue || ''), kind: isMinor(e) ? 'minor' : 'main', link: '#/event/' + e.id });
   }
-  items.push({ date: '2026-12-11', time: '05:00', title: 'Прибуття до Одеси', sub: 'Попередньо, може змінитися.', kind: 'travel' });
   const days = [...new Set(items.map(i => i.date))];
   const dayName = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', ...WEEKDAY };
   return days.map(d => `<div class="agenda-day"><h3>${d.slice(8)} грудня · ${dayName[d] || ''}</h3>${items.filter(i => i.date === d).map(i => `
@@ -710,7 +724,7 @@ function viewMe() {
     <article class="tile"><span class="kicker">${ic('bus')} ГРУПА ДОЇЗДУ</span><h3>${esc(me.transport?.title || 'Уточнюється')}</h3>
       <p>${esc(me.transport?.note || 'Організатори вкажуть вашу групу.')}</p><p class="meet"><b>Збір:</b> ${me.transport?.meet ? esc(me.transport.meet) : 'точка і час збору уточнюються'}</p></article>
     <article class="tile"><span class="kicker">${ic('users')} UNIONIZE</span><h3>${me.table ? `Стіл ${me.table} · місце ${me.seat}` : 'Місце ще не призначене'}</h3>
-      ${me.table ? `<p>${me.table === 1 ? esc(me.tableInfo?.label || 'Керівництво та гості') : `Ведучий: ${esc(me.tableInfo?.host || 'уточнюється')}`}</p>${me.neighbours.length ? `<p class="fine">За столом: ${me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}` : '<p>Розсадку опублікують організатори.</p>'}
+      ${me.table ? `<p>Ведучий: ${esc(me.tableInfo?.host || 'уточнюється')}${me.table === 1 ? ` · ${esc(me.tableInfo?.label || 'керівництво та гості')}` : ''}</p>${me.neighbours.length ? `<p class="fine">За столом: ${me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}` : '<p>Розсадку опублікують організатори.</p>'}
       <a class="link" href="#/event/088">Схема залу ${ic('arrow')}</a></article>
     ${me.team || me.room ? `<article class="tile"><span class="kicker">${ic('info')} ДЕТАЛІ</span>${me.team ? `<h3>Команда: ${esc(me.team)}</h3>` : ''}${me.room ? `<p>Кімната: ${esc(me.room)}</p>` : ''}</article>` : ''}
   </div>
@@ -831,7 +845,7 @@ function localAnswer(q) {
     if (L.next) parts.push(`Наступна подія: **${L.next.title}** — ${L.next.date.slice(8)}.12, ${formatRange(L.next)} [[${L.next.id}]]`);
     return { content: parts.join('\n\n') || 'Зараз подій за програмою немає.' };
   }
-  if (/доїх|доб|трансфер|автобус|одес|ізма|київ|виїзд|збір/.test(s)) return { content: 'Групи доїзду:\n\n- Ізмаїл → Одеса → Плай: автобус до Одеси, пересадка на спільний автобус\n- Одеса → Плай: спільний автобус, виїзд попередньо 6 грудня о 22:30\n- Київ → Плай: автомобіль\n\nТочки й час збору уточнюються. Повернення: виїзд з «Плаю» 10 грудня о 12:30, прибуття до Одеси 11 грудня близько 05:00 (попередньо). Деталі — у розділі «Доїзд».' };
+  if (/доїх|доб|трансфер|автобус|одес|ізма|київ|виїзд|збір/.test(s)) return { content: 'Доїзд 6 грудня:\n\n- Ізмаїл → Одеса: організований автобус, розміщення в готелі Leomare\n- Одеса → «Плай»: спільний автобус о 22:30 для учасників з Одеси та Ізмаїла\n- Київ → «Плай»: автомобіль\n\nТочки збору уточнюються. Повернення: виїзд з «Плаю» 10 грудня о 12:30, прибуття до Одеси 11 грудня близько 05:00 (попередньо). Деталі — у розділі «Доїзд».' };
   const dayHit = DAYS.find(d => s.includes(String(+d.slice(8))) || s.includes(WEEKDAY[d].toLowerCase().slice(0, 5)));
   const STOP = new Set(['коли', 'який', 'яка', 'які', 'яке', 'де', 'що', 'буде', 'відбувається', 'проходить', 'мені', 'можна', 'про', 'для', 'там', 'цей', 'грудня', 'розкажи', 'night', 'форум', 'форуму']);
   const words = s.replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/).filter(w => w.length > 2 && !STOP.has(w));
@@ -985,7 +999,7 @@ function openEditor(id) {
   const t = (n, l, max) => `<label class="field"><span>${l}</span><textarea name="${n}" maxlength="${max}" rows="3">${esc(e[n] || '')}</textarea></label>`;
   openDialog(`<form id="event-form" data-id="${esc(e.id || 'new')}" class="editor-body">${dlgHead(e.id ? 'Редагувати подію' : 'Нова подія')}
     ${f('title', 'Назва заходу', 130)}
-    <div class="two-col"><label class="field"><span>Дата</span><select name="date">${DAYS.map(d => `<option value="${d}" ${d === e.date ? 'selected' : ''}>${d.slice(8)} грудня</option>`).join('')}</select></label>
+    <div class="two-col"><label class="field"><span>Дата</span><select name="date">${ALL_DAYS.map(d => `<option value="${d}" ${d === e.date ? 'selected' : ''}>${d.slice(8)} грудня</option>`).join('')}</select></label>
     <label class="field"><span>Статус</span><select name="status">${[['tentative', 'Попередньо'], ['confirmed', 'Підтверджено'], ['canceled', 'Скасовано']].map(([k, v]) => `<option value="${k}" ${k === e.status ? 'selected' : ''}>${v}</option>`).join('')}</select></label></div>
     <div class="two-col">${f('start', 'Початок', 0, 'time')}${f('end', 'Кінець', 0, 'time')}</div>
     ${f('venue', 'Локація', 90)}${t('details', 'Короткий опис для учасників', 600)}

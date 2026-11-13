@@ -633,7 +633,7 @@ dialog::backdrop { background: rgba(10,16,14,.6); backdrop-filter: blur(4px); }
 .umap .seat-me-t { font: 700 10px var(--body); fill: var(--on-lift); text-anchor: middle; }
 .umap .host { fill: var(--t-blue); }
 .umap .tn { font: 800 17px var(--display); fill: var(--ink); text-anchor: middle; letter-spacing: -.02em; }
-.umap .tl { font: 600 12px var(--body); fill: var(--ink-3); text-anchor: middle; }
+.umap .tl { font: 600 11px var(--body); fill: var(--ink-3); text-anchor: middle; }
 .umap figcaption { display: flex; flex-wrap: wrap; gap: 8px 18px; padding-top: 8px; font-size: 13px; color: var(--ink-2); }
 .umap figcaption span { display: inline-flex; align-items: center; gap: 7px; }
 .lg { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }

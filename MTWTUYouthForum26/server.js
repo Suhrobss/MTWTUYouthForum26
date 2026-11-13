@@ -23,8 +23,8 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
 const MODE = process.env.SITE_MODE || 'preview';
-const SCHEMA = 2;
-const DAYS = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10'];
+const SCHEMA = 5;
+const DAYS = ['2026-12-06', '2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10', '2026-12-11'];
 
 /* ---------------- storage ---------------- */
 let store;
@@ -33,11 +33,28 @@ function loadStore() {
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
   if (fs.existsSync(STORE_FILE)) { try { store = JSON.parse(fs.readFileSync(STORE_FILE, 'utf8')); } catch { store = null; } }
   if (!store) store = { events: seed.events, announcements: [], subscriptions: [], vapid: null };
-  if ((store.schema || 1) < SCHEMA) {
-    // v2: program from the organizers' PDF, cabinets, Unionize, speakers, sponsors, questions
-    store.events = seed.events;
-    store.schema = SCHEMA;
+  const was = store.schema || 1;
+  if (was < 2) store.events = seed.events; // v2: program from the organizers' PDF
+  if (was < 3) {
+    // v3: full speaker names and roles from the organizers
+    store.events = store.events.map(e => { const s = seed.events.find(x => x.id === e.id); return s ? { ...e, speakerNames: s.speakerNames } : e; });
+    store.speakers = (seed.speakers || []).map(sp => { const old = (store.speakers || []).find(x => x.id === sp.id); return old && old.photo && !sp.photo ? { ...sp, photo: old.photo } : sp; });
   }
+  if (was < 4) {
+    // v4: updated organizers' program (13.11): titles, descriptions, speakers, Unionize hosts, transfers
+    store.events = seed.events;
+    store.speakers = (seed.speakers || []).map(sp => { const old = (store.speakers || []).find(x => x.id === sp.id); return old && old.photo && !sp.photo ? { ...sp, photo: old.photo, logo: old.logo || sp.logo } : sp; });
+    (store.unionize ||= seed.unionize).tables.forEach(t => { const s = seed.unionize.tables.find(x => x.n === t.n); if (s && !t.host) t.host = s.host; });
+    store.transport = seed.transport.map(t => ({ ...t, meet: (store.transport || []).find(x => x.key === t.key)?.meet || '' }));
+  }
+  if (was < 5) {
+    // v5: travel days 6 and 11 December, guests' dinner, free time at 23:00 (program of 13.11)
+    for (const e of seed.events) if (!store.events.some(x => x.id === e.id)) store.events.push(e);
+    store.events = store.events.map(e => { const s = seed.events.find(x => x.id === e.id); return s && s.seq != null ? { ...e, seq: s.seq, group: s.group } : e; });
+    store.settings ||= {};
+    if (!store.settings.participantsLabel) store.settings.participantsLabel = seed.settings.participantsLabel;
+  }
+  store.schema = SCHEMA;
   store.announcements ||= [];
   store.subscriptions ||= [];
   store.participants ||= [];
@@ -237,21 +254,22 @@ function publicPayload() {
 /* ---------------- Claude concierge ---------------- */
 const FACTS = `
 ЗАГАЛЬНЕ: MTWTU Youth Forum 2026 — форум Молодіжної ради ПРМТУ (Профспілка робітників морського транспорту України). 7–10 грудня 2026, гірськолижний комплекс «Плай», с. Плав'я, Львівська область. Сайт комплексу: https://play-karpaty.com/
-КЕРІВНИК: Олег Ігоревич Григорюк — Голова ПРМТУ.
-ЛОКАЦІЇ ЗА ПРОГРАМОЮ: Великий зал, Малий зал, Ресторан, Боулінг, Рецепція/готель, Приватний event space. Інших подробиць про розташування на території немає.
-ПАРАЛЕЛЬНІ СЕСІЇ: 8.12 о 12:00 — Медіація (Малий зал) або CV (Великий зал); 9.12 о 10:00 — Історія профспілок (Малий зал) або Документи, кейси (Великий зал). По 25 місць. Учасник записується сам у розділі «Мій форум» (вхід за персональним кодом), запис відкритий до початку сесії; місця обмежені, краще записатися швидше.
-UNIONIZE: 9 столів. Стіл 1 — керівництво та гості (8 місць), столи 2–9 — до 6 учасників, за кожним ведучий. Своє місце й сусідів учасник бачить у «Мій форум».
-ДОЇЗД: групи — Ізмаїл → Одеса → Плай (автобус, пересадка в Одесі), Одеса → Плай (спільний автобус, виїзд попередньо 6.12 о 22:30), Київ → Плай (автомобіль). Виїзд з «Плаю» 10.12 о 12:30 (обід з собою), прибуття до Одеси 11.12 близько 05:00 — попередньо.
+КЕРІВНИК: Олег Ігоревич Григорюк — Голова ПРМТУ, Член Виконавчого комітету ITF.
+СКОРОЧЕННЯ: «ГО ТІ» = ГО «Трудові ініціативи» (директор Георгій Сандул); «Атомники» — Професійна спілка працівників атомної енергетики та промисловості України; «Залізничники» — Профспілка залізничників і транспортних будівельників України.
+ЛОКАЦІЇ ЗА ПРОГРАМОЮ: Велика зала, Мала зала, Ресторан, Боулінг, Рецепція/готель, Приватний event space. Інших подробиць про розташування на території немає.
+ПАРАЛЕЛЬНІ СЕСІЇ: 8.12 о 12:00 — Тренінг «Медіація» (Мала зала) або Тренінг «CV» (Велика зала); 9.12 о 10:00 — Історія профспілкового руху (Мала зала) або MTWTU LAW HUB (Велика зала). До 25 учасників у кожному. Учасник записується сам у розділі «Мій форум» (вхід за персональним кодом), запис відкритий до початку сесії; місця обмежені, краще записатися швидше.
+UNIONIZE: навчальна інтерактивна настільна гра, 9 ігрових столів. Стіл 1 — керівництво та гості (8 місць), столи 2–9 — до 6 учасників. Ведучі: стіл 1 — Сухроб Собіров, 2 — Ірина Єріненко, 3 — Юлія Пелих, 4 — Вікторія Кернос, 5 — Діана Кожуріна, 6 — Марина Бабаченко, 7 — Евеліна Лужанська, 8 — Наталя Іжиця, 9 — Олена Сухініна. Своє місце й сусідів учасник бачить у «Мій форум».
+ДОЇЗД: 6.12 — організований автобус Ізмаїл → Одеса, учасники з Ізмаїла розміщуються в готелі Leomare (Одеса); о 22:30 спільний автобус Одеса → ГК «Плай» для учасників з Одеси та Ізмаїла. Учасники з Києва — автомобілем. Повернення: 10.12 о 12:30 автобус «Плай» → Одеса (обід з собою), 11.12 орієнтовно о 05:00 прибуття до Одеси; учасники з Ізмаїла розміщуються в готелі Leomare, потім автобус Одеса → Ізмаїл (час уточнюється).
 ПРО МОЛОДІЖНУ РАДУ: молодіжний рух ПРМТУ з 2002 року; включеність в ITF/ETF; напрями Sail Smart, MTWTU LAW HUB, форуми й Summer Leadership Camp, Union Quiz, Union Sport; присутність в Одесі, Ізмаїлі, Чорноморську. Instagram: https://www.instagram.com/mtwtuyouth/
 `;
 function systemPrompt(me) {
-  const program = store.events.filter(e => e.published !== false).map(e => ({ id: e.id, date: e.date, start: e.start, end: e.end, title: e.title, venue: e.venue, status: e.status, track: e.track, capacity: e.capacity, details: e.details, teaser: e.teaser, why: e.why, speakers: e.speakerNames }));
+  const program = store.events.filter(e => e.published !== false).map(e => ({ id: e.id, forGroup: e.group, date: e.date, start: e.start, end: e.end, title: e.title, venue: e.venue, status: e.status, track: e.track, capacity: e.capacity, details: e.details, teaser: e.teaser, why: e.why, speakers: e.speakerNames }));
   const ann = store.announcements.slice(0, 15).map(a => ({ title: a.title, text: a.text, kind: a.kind, createdAt: a.createdAt }));
   const kb = store.knowledge.slice(0, 80).map(k => ({ q: k.q, a: k.a }));
   const s = store.settings;
   const extra = [s.coordinator && `Контакт координатора: ${s.coordinator}`, s.telegramUrl && `Telegram-канал форуму: ${s.telegramUrl}`, s.driveUrl && `Фото форуму: ${s.driveUrl}`].filter(Boolean).join('\n');
   const transport = store.transport.map(t => `${t.title}: ${t.note}${t.meet ? ' Збір: ' + t.meet : ' Точка і час збору уточнюються.'}`).join('\n');
-  const speakers = store.speakers.map(p => [p.name, p.role, p.org].filter(Boolean).join(', ')).join('; ');
+  const speakers = store.speakers.map(p => `${[p.name, p.role].filter(Boolean).join(' — ')}${p.events?.length ? ' (події: ' + p.events.join(', ') + ')' : ''}`).join('; ');
   const sponsors = store.sponsors.map(p => `${p.name}: ${p.text}`).join('; ');
   let personal = 'Користувач не увійшов у «Мій форум».';
   if (me) {
