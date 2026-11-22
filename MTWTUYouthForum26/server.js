@@ -23,7 +23,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || '';
 const ANTHROPIC_MODEL = process.env.ANTHROPIC_MODEL || 'claude-sonnet-4-5';
 const MODE = process.env.SITE_MODE || 'preview';
-const SCHEMA = 6;
+const SCHEMA = 7;
 const DAYS = ['2026-12-06', '2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10', '2026-12-11'];
 
 /* ---------------- storage ---------------- */
@@ -61,6 +61,13 @@ function loadStore() {
     store.speakers = (seed.speakers || []).map(sp => { const old = (store.speakers || []).find(x => x.id === sp.id); return old ? { ...sp, photo: old.photo || sp.photo, logo: old.logo || sp.logo } : sp; });
     const t6 = (store.unionize ||= seed.unionize).tables.find(t => t.n === 6); if (t6) t6.host = seed.unionize.tables.find(t => t.n === 6).host;
     store.transport = seed.transport.map(t => { const old = (store.transport || []).find(x => x.key === t.key); const { meetDefault, ...rest } = t; return { ...rest, meet: old?.meet || meetDefault || '' }; });
+  }
+  if (was < 7) {
+    // v7: LAW HUB in the Great Hall right after the union-history training (not parallel); Kyiv route; participant categories
+    for (const id of ['092', '093', '094']) { const sd = seed.events.find(x => x.id === id), i = store.events.findIndex(x => x.id === id); if (sd && i >= 0) store.events[i] = { ...sd, published: store.events[i].published ?? sd.published }; }
+    for (const pp of store.participants || []) for (const k of Object.keys(pp.sessions || {})) if (k === '2026-12-09 10:00') delete pp.sessions[k];
+    const kv = (store.transport || []).find(t => t.key === 'kyiv'), ks = seed.transport.find(t => t.key === 'kyiv'); if (kv && ks) kv.note = ks.note;
+    for (const pp of store.participants || []) pp.category ||= 'participant';
   }
   store.schema = SCHEMA;
   store.announcements ||= [];
@@ -145,6 +152,21 @@ function newCode() {
     if (!store.participants.some(p => p.code === c)) return c;
   }
 }
+const CATS = { participant: 'Учасник', guest: 'Запрошений гість', staff: 'Апарат', escort: 'Супровід' };
+function catKey(v) {
+  const s = String(v || '').toLowerCase().trim();
+  if (CATS[s]) return s;
+  if (/запрош|гіст|гост|guest/.test(s)) return 'guest';
+  if (/апарат|staff|оргком|організ/.test(s)) return 'staff';
+  if (/супров|escort|керівник груп/.test(s)) return 'escort';
+  return 'participant';
+}
+const nameKey = n => String(n || '').toLowerCase().replace(/[’'`ʼ]/g, '').replace(/\s+/g, ' ').trim();
+function hostTableOf(p) {
+  if (p.hostTable) return p.hostTable;
+  const k = nameKey(p.name); if (k.length < 5) return null;
+  return store.unionize.tables.find(t => t.host && nameKey(t.host).includes(k))?.n || null;
+}
 const normCode = c => String(c || '').toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^PLAI/, 'PLAI-');
 function groupKey(v) {
   const s = String(v || '').toLowerCase();
@@ -177,7 +199,28 @@ function cleanParticipant(input, base) {
   if ('team' in input) p.team = str(input.team, 60);
   if ('room' in input) p.room = str(input.room, 20);
   if ('note' in input) p.note = str(input.note, 200);
+  if ('category' in input) p.category = catKey(input.category);
+  p.category ||= 'participant';
+  if ('role' in input) p.role = str(input.role, 140);
+  if ('duties' in input) p.duties = String(input.duties ?? '').replace(/\r/g, '').trim().slice(0, 1500);
+  if ('travel' in input) p.travel = String(input.travel ?? '').replace(/\r/g, '').trim().slice(0, 600);
+  if ('events' in input) p.events = (Array.isArray(input.events) ? input.events : []).filter(id => store.events.some(e => e.id === id)).slice(0, 40);
   if (!p.name) throw fail(400, 'Потрібне ім’я');
+  if ('code' in input && String(input.code || '').trim()) {
+    const c = normCode(input.code);
+    if (c.replace(/-/g, '').length < 4 || c.length > 24) throw fail(400, 'Код має містити 4–24 латинські літери або цифри');
+    const other = store.participants.find(x => x.code === c && x.id !== p.id);
+    if (other) throw fail(409, `Код ${c} уже має ${other.name}`);
+    p.code = c;
+  }
+  if ('hostTable' in input) {
+    const n = input.hostTable === '' || input.hostTable == null ? null : Number(input.hostTable);
+    if (n && !store.unionize.tables.some(t => t.n === n)) throw fail(400, `Стола ${n} немає`);
+    const old = p.hostTable ? store.unionize.tables.find(t => t.n === p.hostTable) : null;
+    if (old && old.n !== n && nameKey(old.host) === nameKey(p.name)) old.host = '';
+    p.hostTable = n || null;
+    if (n) store.unionize.tables.find(x => x.n === n).host = p.name;
+  }
   if ('table' in input) placeAtTable(p, input.table === '' || input.table == null ? null : input.table);
   return p;
 }
@@ -187,9 +230,9 @@ function parseCsv(text) {
   const sep = [';', '\t', ','].find(s => lines[0].includes(s)) || ';';
   let rows = lines.map(l => l.split(sep).map(c => c.trim().replace(/^"|"$/g, '')));
   const head = rows[0].map(h => h.toLowerCase());
-  const hasHead = head.some(h => /ім|name|груп|стіл|команд/.test(h));
+  const hasHead = head.some(h => /ім|name|груп|стіл|команд|катег|посад|^код/.test(h));
   const idx = (re, d) => { const i = head.findIndex(h => re.test(h)); return hasHead ? i : d; };
-  const cols = { name: idx(/ім|піб|name/, 0), group: idx(/груп|доїзд|місто|group/, 1), table: idx(/стіл|table/, 2), team: idx(/команд|team/, 3), room: idx(/кімн|room/, 4) };
+  const cols = { name: idx(/ім|піб|name/, 0), group: idx(/груп|доїзд|місто|group/, 1), table: idx(/стіл|table/, 2), team: idx(/команд|team/, 3), room: idx(/кімн|room/, 4), category: idx(/катег|статус|category/, 5), role: idx(/посад|функц|роль|role/, 6), code: idx(/^код|code/, -1) };
   if (hasHead) rows = rows.slice(1);
   return rows.map(r => Object.fromEntries(Object.entries(cols).filter(([, i]) => i >= 0 && r[i] != null).map(([k, i]) => [k, r[i]])));
 }
@@ -208,8 +251,11 @@ const sessionCounts = () => {
 function myPayload(p) {
   const neighbours = p.table ? store.participants.filter(x => x.table === p.table && x.id !== p.id).sort((a, b) => a.seat - b.seat).map(x => ({ name: x.name, seat: x.seat })) : [];
   const table = p.table ? store.unionize.tables.find(t => t.n === p.table) : null;
+  const hn = hostTableOf(p);
+  const host = hn ? { n: hn, label: store.unionize.tables.find(t => t.n === hn)?.label || '', seated: store.participants.filter(x => x.table === hn && x.id !== p.id).sort((a, b) => a.seat - b.seat).map(x => ({ name: x.name, seat: x.seat })) } : null;
   return {
     id: p.id, name: p.name, group: p.group, team: p.team, room: p.room, sessions: p.sessions || {},
+    category: p.category || 'participant', categoryLabel: CATS[p.category] || CATS.participant, role: p.role || '', duties: p.duties || '', travel: p.travel || '', events: p.events || [], host,
     table: p.table, seat: p.seat, tableInfo: table, neighbours,
     transport: store.transport.find(t => t.key === p.group) || null,
     questions: store.questions.filter(q => q.participantId === p.id).map(publicQuestion)
@@ -357,12 +403,12 @@ const FACTS = `
 ЛОКАЦІЇ ЗА ПРОГРАМОЮ: Велика зала, Мала зала, Ресторан, Ресторан «Карпатська ружа» (вечеря для запрошених гостей), Боулінг, Готель/рецепція, Екоферма «Плай». Інших подробиць про розташування на території немає.
 ДЕНЬ 1, 07.12: до 16:00 — прибуття та поселення (готель/рецепція); 17:00–18:00 — реєстрація учасників, отримання інформаційних матеріалів (готель/рецепція); 18:00–19:00 — вечеря (ресторан); 19:00–20:30 — організаційний брифінг: програма, організаційні питання, правила участі, представлення команд (Велика зала); з 20:30 — вільний час.
 ДЕНЬ 2, 08.12: 09:00–10:00 сніданок; 10:00–10:20 офіційне відкриття (Велика зала) — Олег Григорюк та Ірина Єріненко; 10:20–11:45 вітальні слова партнерів і відкрита дискусія «Можливості профспілки» (Велика зала); 11:45–12:00 кава-пауза; 12:00–13:30 паралельні тренінги «Медіація» (Мала зала) і «CV» (Велика зала); 13:30–14:30 обід; 14:30–16:15 UNIONIZE, частина 1 (Велика зала); 16:15–16:30 кава-пауза; 16:30–18:30 UNIONIZE, частина 2 — учасники повертаються на свої місця; 18:30–19:00 підбиття підсумків гри; 19:00–20:00 вечеря; 20:00–22:00 BOWLING NIGHT: Battle of Crews — командний турнір з боулінгу (Боулінг); після 22:00 — вільний час.
-ДЕНЬ 3, 09.12: 09:00–10:00 сніданок; 10:00–11:45 паралельно: «Історія профспілкового руху: інтерактивний тренінг» з тематичним квізом (Велика зала, Георгій Сандул) та «MTWTU LAW HUB» — про сервіс MTWTU LAW HUB (Олег Григорюк, Сухроб Собіров; залу в програмі не вказано); 11:45–12:00 кава-пауза; 12:00–13:30 тренінг «Профспілковий органайзинг» (Велика зала); 13:30–14:30 обід; 14:30–17:30 екскурсія на екоферму «Плай»; 18:00–19:00 вечеря (ресторан), для запрошених гостей — окрема вечеря в ресторані «Карпатська ружа»; 19:00–20:00 підбиття підсумків форуму та нагородження (обговорення результатів і планів реалізації молодіжних ініціатив на місцях); 20:00–01:00 FINAL PARTY — DJ NIGHT: одна спільна фінальна вечірка для всіх учасників з ведучим і DJ; з 01:00 — відпочинок.
+ДЕНЬ 3, 09.12: 09:00–10:00 сніданок; з 10:00 у Великій залі для всіх: спершу «Історія профспілкового руху: інтерактивний тренінг» з тематичним квізом (Георгій Сандул), одразу після нього там само — «MTWTU LAW HUB», про сервіс MTWTU LAW HUB (Олег Григорюк, Сухроб Собіров), до 11:45 (точний час переходу між ними не вказано); це не паралельні сесії, запис не потрібен; 11:45–12:00 кава-пауза; 12:00–13:30 тренінг «Профспілковий органайзинг» (Велика зала); 13:30–14:30 обід; 14:30–17:30 екскурсія на екоферму «Плай»; 18:00–19:00 вечеря (ресторан), для запрошених гостей — окрема вечеря в ресторані «Карпатська ружа»; 19:00–20:00 підбиття підсумків форуму та нагородження (обговорення результатів і планів реалізації молодіжних ініціатив на місцях); 20:00–01:00 FINAL PARTY — DJ NIGHT: одна спільна фінальна вечірка для всіх учасників з ведучим і DJ; з 01:00 — відпочинок.
 ДЕНЬ 4, 10.12: 08:00–09:00 сніданок; 09:00–09:30 виселення (звільнення номерів, готель/рецепція); 09:30–14:00 відпочинок у Карпатах: підйомники ГК «Плай» (залежить від погоди та роботи підйомників); 14:00–15:00 обід; 15:00 — виїзд учасників автобусом з «Плаю» до Одеси.
 11.12: орієнтовно 05:00 — прибуття учасників до Одеси (час орієнтовний); далі автобус Одеса → Ізмаїл (час відправлення й прибуття уточнюється).
-ПАРАЛЕЛЬНІ СЕСІЇ: 8.12 о 12:00 — «Медіація» (Мала зала) або «CV» (Велика зала); 9.12 о 10:00 — «Історія профспілкового руху» (Велика зала) або «MTWTU LAW HUB». До 25 учасників у кожній. Учасник записується сам у «Мій форум» (вхід за персональним кодом), запис відкритий до початку сесії; місця обмежені.
+ПАРАЛЕЛЬНІ СЕСІЇ: 8.12 о 12:00 — «Медіація» (Мала зала) або «CV» (Велика зала). До 25 учасників у кожній. 9.12 паралельних сесій немає. Учасник записується сам у «Мій форум» (вхід за персональним кодом), запис відкритий до початку сесії; місця обмежені.
 UNIONIZE: навчальна інтерактивна настільна командна гра, 9 ігрових столів під керівництвом ведучих. Стіл 1 — керівництво та гості (8 місць), столи 2–9 — до 6 учасників. Ведучі: 1 — Сухроб Собіров, 2 — Ірина Єріненко, 3 — Юлія Пелих, 4 — Вікторія Кернос, 5 — Діана Кожуріна, 6 — Даниела Гергі, 7 — Евеліна Лужанська, 8 — Наталя Іжиця, 9 — Олена Сухініна. Своє місце й сусідів учасник бачить у «Мій форум».
-ДОЇЗД УЧАСНИКІВ: 6.12, 10:00–14:00 — організований автобус Ізмаїл (залізничний вокзал) → Одеса. Учасники з Ізмаїла та Києва розміщуються в готелі Leomare (Одеса, вул. Генуезька, 3б). 6.12 о 22:30 — спільний автобус Одеса → ГК «Плай» для учасників з Одеси та Ізмаїла, місце збору — Гагарін Плаза (Одеса). Як учасники з Києва добираються до Одеси, у програмі не вказано.
+ДОЇЗД УЧАСНИКІВ: 6.12, 10:00–14:00 — організований автобус Ізмаїл (залізничний вокзал) → Одеса. Учасники з Ізмаїла та Києва розміщуються в готелі Leomare (Одеса, вул. Генуезька, 3б). 6.12 о 22:30 — спільний автобус Одеса → ГК «Плай» для учасників з Одеси та Ізмаїла, місце збору — Гагарін Плаза (Одеса). Учасники з Києва добираються до Одеси, а 6.12 о 22:30 їдуть разом з усіма спільним автобусом Одеса → «Плай» (як саме вони їдуть з Києва до Одеси, не вказано). Запрошені гості їдуть на автомобілях.
 ДОЇЗД ЗАПРОШЕНИХ ГОСТЕЙ: 7.12 о 06:00 — трансфер Одеса → «Плай»; 7.12 о 07:00 — трансфер Київ → «Плай». Назад: 10.12 о 06:00 — «Плай» → Одеса; також трансфер «Плай» → Київ (час не вказано).
 ПОВЕРНЕННЯ УЧАСНИКІВ: 10.12 о 15:00 автобус «Плай» → Одеса, 11.12 орієнтовно о 05:00 прибуття до Одеси; потім автобус Одеса → Ізмаїл (час уточнюється).
 ПРО МОЛОДІЖНУ РАДУ: молодіжний рух ПРМТУ з 2002 року; включеність в ITF/ETF; напрями Sail Smart, MTWTU LAW HUB, форуми й Summer Leadership Camp, Union Quiz, Union Sport; присутність в Одесі, Ізмаїлі, Чорноморську. Голова Молодіжної ради — Ірина Єріненко. Instagram: https://www.instagram.com/mtwtuyouth/
@@ -380,7 +426,7 @@ function systemPrompt(me) {
   if (me) {
     const sess = Object.values(me.sessions || {}).map(id => store.events.find(e => e.id === id)?.title).filter(Boolean);
     const tr = store.transport.find(t => t.key === me.group);
-    personal = `Користувач увійшов: ${me.name}. Група доїзду: ${tr ? tr.title : 'не вказана'}. Записаний на сесії: ${sess.join(', ') || 'ще ні'}. Unionize: ${me.table ? `стіл ${me.table}, місце ${me.seat}` : 'місце ще не призначене'}.${me.team ? ' Команда: ' + me.team + '.' : ''}${me.room ? ' Кімната: ' + me.room + '.' : ''}`;
+    personal = `Користувач увійшов: ${me.name}. Група доїзду: ${tr ? tr.title : 'не вказана'}. Записаний на сесії: ${sess.join(', ') || 'ще ні'}. Категорія: ${CATS[me.category] || CATS.participant}.${me.role ? ' Роль/посада: ' + me.role + '.' : ''} Unionize: ${me.table ? `стіл ${me.table}, місце ${me.seat}` : 'місце ще не призначене'}.${hostTableOf(me) ? ` Ведучий столу ${hostTableOf(me)} на Unionize.` : ''}${me.travel ? ' Особистий доїзд: ' + me.travel + '.' : ''}${me.duties ? ' Обов’язки на форумі: ' + me.duties.replace(/\n/g, '; ') + '.' : ''}${me.events?.length ? ' Задіяний у подіях: ' + me.events.map(id => store.events.find(e => e.id === id)?.title).filter(Boolean).join(', ') + '.' : ''}${me.team ? ' Команда: ' + me.team + '.' : ''}${me.room ? ' Кімната: ' + me.room + '.' : ''}`;
   }
   return `Ти — Юніончик, милий помічник-талісман MTWTU Youth Forum 2026 (персонаж за мотивами логотипа MTWTU Youth). Говори про себе в чоловічому роді від першої особи («я знайду», «я передам»). Відповідай українською, тепло, дружньо й коротко (до 110 слів), без емодзі. Якщо питають, хто ти або на чому працюєш: ти Юніончик, помічник форуму, працюєш на моделі Claude від Anthropic і відповідаєш лише з даних організаторів.
 
