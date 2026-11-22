@@ -8,6 +8,23 @@ const DAYS = ['2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10'];
 const ALL_DAYS = ['2026-12-06', '2026-12-07', '2026-12-08', '2026-12-09', '2026-12-10', '2026-12-11'];
 const CHAPTER_DAYS = { '2026-12-07': ['2026-12-06', '2026-12-07'], '2026-12-08': ['2026-12-08'], '2026-12-09': ['2026-12-09'], '2026-12-10': ['2026-12-10', '2026-12-11'] };
 const GROUP_LABEL = { izmail: 'учасники з Ізмаїла', odesa: 'учасники з Одеси', kyiv: 'учасники з Києва', guests: 'запрошені гості' };
+
+/* ============ Юніончик — помічник форуму ============ */
+const UNI_NAME = 'Юніончик';
+const UNI_SVG = `<svg class="uni-svg" viewBox="-10 -10 220 230" aria-hidden="true" focusable="false"><g class="u-bob"><g class="u-head"><g class="u-arm u-arm-l"><path d="M50 125 Q30 140 26 160" stroke="#fff" stroke-width="20" fill="none" stroke-linecap="round"/><path d="M50 125 Q30 140 26 160" stroke="#1D6FA8" stroke-width="10" fill="none" stroke-linecap="round"/></g><g class="u-arm u-arm-r"><path d="M150 125 Q170 140 174 160" stroke="#fff" stroke-width="20" fill="none" stroke-linecap="round"/><path d="M150 125 Q170 140 174 160" stroke="#1D6FA8" stroke-width="10" fill="none" stroke-linecap="round"/></g><circle cx="100" cy="115" r="78" fill="#fff"/><g class="u-swirl"><g class="u-spin"><circle cx="100" cy="115" r="66" fill="none" stroke="#1D6FA8" stroke-width="15" stroke-linecap="round" stroke-dasharray="330 30" transform="rotate(-70 100 115)"/><circle cx="100" cy="115" r="58" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" stroke-dasharray="120 40 90 60" opacity=".75"/><circle cx="100" cy="115" r="72" fill="none" stroke="#1D6FA8" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 30 140 200" opacity=".6"/><path d="M140 52 Q170 60 176 88" fill="none" stroke="#1D6FA8" stroke-width="9" stroke-linecap="round"/><path d="M150 48 Q168 50 178 66" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" opacity=".8"/></g></g><ellipse cx="74" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/><ellipse cx="126" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/><g class="u-eyes"><g class="u-eye"><ellipse cx="82" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="84.5" cy="108" r="2.6" fill="#fff"/></g><g class="u-eye"><ellipse cx="118" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="120.5" cy="108" r="2.6" fill="#fff"/></g></g><g class="u-lids" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"><path d="M74 114 Q82 120 90 114"/><path d="M110 114 Q118 120 126 114"/></g><path class="u-mouth" d="M90 136 Q100 145 110 136" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"/><path class="u-open" d="M88 134 Q100 134 112 134 Q110 152 100 152 Q90 152 88 134 Z" fill="#0D1411"/><g class="u-dots" fill="#1D6FA8"><circle cx="150" cy="30" r="5"/><circle cx="166" cy="22" r="5"/><circle cx="182" cy="14" r="5"/></g><g class="u-zzz" font-family="Unbounded, sans-serif" font-weight="900" fill="#1D6FA8"><text x="150" y="40" font-size="18">z</text><text x="160" y="30" font-size="14">z</text><text x="168" y="22" font-size="11">z</text></g></g></g></svg>`;
+const UNI_SAY = { idle: 'Привіт! Я Юніончик. Питай про форум', listen: 'Слухаю уважно…', think: 'Шукаю в програмі…', happy: 'Готово! Ось відповідь', salute: 'Передав організаторам!', sleep: 'Zzz… Торкнись, щоб розбудити' };
+const uni = (cls = '', live = false) => `<span class="uni ${cls}"${live ? ' data-uni-live' : ''} aria-hidden="true">${UNI_SVG}</span>`;
+const uniNight = () => { const h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date()) % 24; return h >= 23 || h < 7; };
+function uniBase() { return !S.uniAwake && uniNight() ? 'sleep' : 'idle'; }
+document.querySelectorAll('[data-uni-static]').forEach(el => { el.innerHTML = UNI_SVG; });
+let uniTimer = 0;
+function setUni(state, ms) {
+  clearTimeout(uniTimer);
+  S.uni = state || uniBase();
+  document.querySelectorAll('[data-uni-live]').forEach(el => { el.classList.remove('is-listen', 'is-think', 'is-happy', 'is-salute', 'is-sleep'); if (S.uni !== 'idle') el.classList.add('is-' + S.uni); });
+  document.querySelectorAll('[data-uni-say]').forEach(el => { el.textContent = UNI_SAY[S.uni] || UNI_SAY.idle; });
+  if (ms) uniTimer = setTimeout(() => setUni(uniBase()), ms);
+}
 const WEEKDAY = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', '2026-12-07': 'Понеділок', '2026-12-08': 'Вівторок', '2026-12-09': 'Середа', '2026-12-10': 'Четвер' };
 const CHAPTERS = [
   { id: '2026-12-07', idx: '01', small: 'ПРИБУТТЯ', name: 'Знайомство', tag: 'Починається нова історія', sub: 'Від реєстрації до першого спільного вечора.', trail: 'green', trailName: 'Зелена траса', trailNote: 'М’який старт: знайомимось і заселяємось.' },
@@ -213,7 +230,7 @@ function footer() {
       <span>ГК «Плай» · 07–10.12.2026</span>
       <a href="#/admin">Організаторам</a>
     </div>
-    <p class="foot-made"><span class="spark" aria-hidden="true"></span> Спроєктовано та написано разом із Claude від Anthropic</p>
+    <p class="foot-made">${uni('uni-xs')} Помічник Юніончик працює на Claude від Anthropic. Сайт спроєктовано та написано разом із Claude.</p>
   </footer>`;
 }
 function pageHead(kicker, title, lead, extra = '') {
@@ -311,14 +328,15 @@ function viewHome() {
   <section class="claude-band">
     <div class="wrap claude-grid">
       <div>
-        <span class="kicker kicker-inv"><span class="spark"></span> НОВЕ · ТІЛЬКИ ТУТ</span>
-        <h2>Запитай форум.<br><em>Claude відповість.</em></h2>
-        <p>Консьєрж на базі Claude від Anthropic знає всю програму, оголошення та логістику — і нічого не вигадує. Якщо чогось ще не підтверджено, він так і скаже.</p>
-        <a class="btn btn-lift" href="#/ask">Поставити запитання ${ic('arrow')}</a>
+        <div class="uni-hero">${uni('uni-lg u-wave')}<span class="uni-say">Привіт! Я Юніончик</span></div>
+        <span class="kicker kicker-inv">ПОМІЧНИК ФОРУМУ · ТІЛЬКИ ТУТ</span>
+        <h2>Запитай форум.<br><em>Юніончик відповість.</em></h2>
+        <p>Юніончик знає всю програму, оголошення, доїзд і спікерів — і нічого не вигадує. Якщо чогось ще не підтверджено, так і скаже, а складне питання передасть організаторам.</p>
+        <a class="btn btn-lift" href="#/ask">Запитати Юніончика ${ic('arrow')}</a>
       </div>
       <div class="claude-demo" aria-hidden="true">
         <div class="bubble me">Що в мене 8 грудня о 12:00?</div>
-        <div class="bubble ai"><span class="spark"></span><span>О 12:00 — дві паралельні сесії: тренінги <b>«Медіація»</b> (Мала зала) і <b>«CV»</b> (Велика зала), до 25 учасників у кожному. Записатися можна в «Мій форум».</span></div>
+        <div class="bubble ai">${uni('uni-sm')}<span>О 12:00 — дві паралельні сесії: тренінги <b>«Медіація»</b> (Мала зала) і <b>«CV»</b> (Велика зала), до 25 учасників у кожному. Записатися можна в «Мій форум».</span></div>
         <div class="chips">${SUGGESTIONS.slice(0, 3).map(s => `<span>${esc(s)}</span>`).join('')}</div>
       </div>
     </div>
@@ -528,7 +546,7 @@ function viewEvent(id) {
       <p>${esc(e.why || 'Поговоримо про цю тему в межах форумної програми.')}</p>
       ${e.details ? `<div class="source"><b>З програми:</b> ${esc(e.details)}</div>` : ''}
       ${e.unionize ? `<span class="kicker">СХЕМА ЗАЛУ · ВИД ЗВЕРХУ</span>${unionizeMap()}${unionizePanel()}` : ''}
-      <a class="ask-inline" href="#/ask" data-ask-about="${esc(e.id)}"><span class="spark"></span> Запитати Claude про «${esc(e.title)}» ${ic('arrow')}</a>
+      <a class="ask-inline" href="#/ask" data-ask-about="${esc(e.id)}">${uni('uni-xs')} Запитати Юніончика про «${esc(e.title)}» ${ic('arrow')}</a>
     </article>
     <aside class="facts">
       <span class="kicker">КОРОТКО ПРО ГОЛОВНЕ</span>
@@ -634,7 +652,7 @@ function viewInfo() {
     <article class="tile">
       <span class="kicker">${ic('info')} NEED HELP?</span><h3>Потрібна допомога?</h3>
       ${st.coordinator ? `<p>${esc(st.coordinator)}</p>` : '<p>Контакт координатора з’явиться тут після погодження.</p><span class="tag">Контакт уточнюється</span>'}
-      <a class="link" href="#/ask">Або запитайте Claude — якщо він не знає, передасть питання організаторам ${ic('arrow')}</a>
+      <a class="link" href="#/ask">Або запитайте Юніончика — якщо він не знає, передасть питання організаторам ${ic('arrow')}</a>
     </article>
     <article class="tile">
       <span class="kicker">${ic('users')} ЖИВЕ СПІЛКУВАННЯ</span><h3>Залишаймося на зв’язку</h3>
@@ -656,7 +674,7 @@ function viewInfo() {
     <details><summary>Як записатися на паралельну сесію?</summary><p>Увійдіть у «Мій форум» за персональним кодом від організаторів і оберіть сесію. У кожній 25 місць, тож краще записатися швидше.</p><a class="link" href="#/me">Мій форум ${ic('arrow')}</a></details>
     <details><summary>Де моє місце на Unionize?</summary><p>Після входу в «Мій форум» ви бачите свій стіл, місце й сусідів на схемі залу.</p><a class="link" href="#/event/088">Unionize ${ic('arrow')}</a></details>
     <details><summary>Де перевіряти зміни програми?</summary><p>Оперативні повідомлення публікуються в оголошеннях.</p><a class="link" href="#/updates">Оголошення ${ic('arrow')}</a></details>
-    <details><summary>Не знайшов відповіді?</summary><p>Запитай Claude. Якщо він не знає точної відповіді, питання піде організаторам, а відповідь прийде сюди ж.</p><a class="link" href="#/ask">Запитати ${ic('arrow')}</a></details>
+    <details><summary>Не знайшов відповіді?</summary><p>Запитай Юніончика. Якщо він не знає точної відповіді, питання піде організаторам, а відповідь прийде сюди ж.</p><a class="link" href="#/ask">Запитати ${ic('arrow')}</a></details>
   </section>
   ${footer()}`;
 }
@@ -713,7 +731,7 @@ function viewMe() {
     <p>Код виглядає як <b>PLAI-XXXX</b>. Ви отримаєте його від організаторів посиланням або QR-кодом на бейджі.</p>
     <label class="field"><span>Персональний код</span><input name="code" autocomplete="one-time-code" autocapitalize="characters" placeholder="PLAI-____" required></label>
     <button class="btn btn-lift full" type="submit">Увійти ${ic('arrow')}</button>
-    <p class="fine">Немає коду? Напишіть організаторам або <a href="#/ask">запитайте Claude</a>.</p>
+    <p class="fine">Немає коду? Напишіть організаторам або <a href="#/ask">запитайте Юніончика</a>.</p>
   </form></section>${footer()}`;
   const me = S.me;
   const slots = new Map();
@@ -735,8 +753,8 @@ function viewMe() {
   <section class="wrap sec"><div class="sec-head"><span class="kicker">МІЙ ДЕНЬ</span><h2>Особистий розклад.</h2><p>Спільна програма разом із вашими сесіями, місцем і доїздом.</p></div>
     <div class="agenda">${myAgenda()}</div></section>
   <section class="wrap sec"><div class="sec-head"><span class="kicker">ПИТАННЯ</span><h2>Мої питання організаторам.</h2></div>
-    ${qs.length ? `<div class="feed">${qs.map(questionCard).join('')}</div>` : `<p class="fine">Поки немає. Якщо Claude не знає відповіді, ваше питання з’явиться тут разом із відповіддю організаторів.</p>`}
-    <div class="row-btns"><a class="btn btn-lift" href="#/ask">Запитати Claude ${ic('arrow')}</a><button class="btn btn-ghost" data-act="me-logout">Вийти</button></div>
+    ${qs.length ? `<div class="feed">${qs.map(questionCard).join('')}</div>` : `<p class="fine">Поки немає. Якщо Юніончик не знає відповіді, ваше питання з’явиться тут разом із відповіддю організаторів.</p>`}
+    <div class="row-btns"><a class="btn btn-lift" href="#/ask">Запитати Юніончика ${ic('arrow')}</a><button class="btn btn-ghost" data-act="me-logout">Вийти</button></div>
   </section>
   ${footer()}`;
 }
@@ -749,16 +767,17 @@ function viewMore() {
   return `${pageHead('МЕНЮ', 'Ще.', 'Усі розділи форуму.')}<nav class="wrap more">${items.map(([h, i, t, s]) => `<a href="${h}">${ic(i)}<span><b>${t}</b><small>${esc(s)}</small></span>${ic('arrow')}</a>`).join('')}<button class="more-theme" data-act="theme">Змінити тему (світла / темна)</button></nav>${footer()}`;
 }
 
-/* ============ Claude concierge ============ */
+/* ============ Юніончик: чат ============ */
 function viewAsk() {
   const ai = S.data?.ai;
+  S.uni = S.asking ? 'think' : (S.uni && S.uni !== 'idle' && S.uni !== 'sleep' ? S.uni : uniBase());
   const open = (S.myQuestions || []).filter(q => !S.chat.some(m => m.qid === q.id));
   return `
   <section class="ask wrap">
     <header class="ask-head">
-      <span class="ask-orb" aria-hidden="true"><span class="spark"></span></span>
-      <div><span class="kicker">КОНСЬЄРЖ ФОРУМУ · POWERED BY CLAUDE</span><h1>Запитай форум.</h1>
-      <p>${ai ? 'Відповіді лише з програми, оголошень і відповідей організаторів. Якщо Claude не знає точно — він передасть питання організаторам, і відповідь прийде сюди.' : 'AI-режим ще не підключено — шукаю відповіді в програмі, а питання без відповіді передаю організаторам.'}${S.me ? ' Claude бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p></div>
+      <button class="ask-uni" type="button" data-act="uni-poke" aria-label="Юніончик">${uni('uni-lg' + (S.uni !== 'idle' ? ' is-' + S.uni : ''), true)}<span class="uni-say" data-uni-say>${UNI_SAY[S.uni]}</span></button>
+      <div><span class="kicker">ПОМІЧНИК ФОРУМУ · ЮНІОНЧИК</span><h1>Запитай форум.</h1>
+      <p>${ai ? 'Юніончик відповідає лише з програми, оголошень і відповідей організаторів. Якщо він не знає точно — передасть питання організаторам, і відповідь прийде сюди.' : 'Розумний режим ще не підключено — Юніончик шукає відповіді в програмі, а питання без відповіді передає організаторам.'}${S.me ? ' Юніончик бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p></div>
     </header>
     ${open.length ? `<div class="feed">${open.map(questionCard).join('')}</div>` : ''}
     <div class="chat" id="chat" aria-live="polite">${S.chat.length ? S.chat.map(renderMsg).join('') : `
@@ -769,7 +788,7 @@ function viewAsk() {
       <textarea id="ask-input" rows="1" maxlength="600" placeholder="Наприклад: коли виїзд з Ізмаїла?" required></textarea>
       <button class="send" type="submit" aria-label="Надіслати">${ic('send')}</button>
     </form>
-    <p class="fine center">Claude може помилятися — перевіряй важливе в «Оголошеннях». Не вводь особисті дані.</p>
+    <p class="fine center">Юніончик може помилятися — перевіряй важливе в «Оголошеннях». Не вводь особисті дані. Працює на Claude від Anthropic.</p>
   </section>`;
 }
 function md(text) {
@@ -781,9 +800,9 @@ function md(text) {
 function renderMsg(m, i) {
   if (m.role === 'user') return `<div class="msg me"><p>${esc(m.content)}</p></div>`;
   const ids = [...new Set([...(m.content.matchAll(/\[\[([\w-]+)\]\]/g))].map(x => x[1]))].filter(evById).slice(0, 4);
-  return `<div class="msg ai ${m.pending ? 'typing' : ''}"><span class="spark" aria-hidden="true"></span><div class="msg-body">${m.content ? md(m.content) : '<span class="dots"><i></i><i></i><i></i></span>'}
+  return `<div class="msg ai ${m.pending ? 'typing' : ''}">${uni('uni-sm' + (m.pending ? ' is-think' : m.qid ? ' is-salute' : ''))}<div class="msg-body">${m.content ? md(m.content) : '<span class="dots"><i></i><i></i><i></i></span>'}
     ${!m.pending && ids.length ? `<div class="msg-cards">${ids.map(id => { const e = evById(id); return `<a href="#/event/${esc(id)}" class="mini t-${chapterOf(e.date).trail}"><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</small><b>${esc(e.title)}</b><span>${esc(e.venue || 'Локація уточнюється')} · ${statusLabel(e.status)}</span></a>`; }).join('')}</div>` : ''}
-    ${m.local ? '<small class="fine">Локальний пошук по програмі · AI-режим не підключено</small>' : ''}
+    ${m.local ? '<small class="fine">Юніончик шукав по програмі · розумний режим не підключено</small>' : ''}
     ${m.pending ? '' : m.qid ? `<p class="escalated">${ic('send')} Питання передано організаторам. Відповідь з’явиться тут${S.me ? ' і в «Мій форум»' : ''}.</p>` : `<button class="link escalate" data-escalate="${i}">${ic('send')} Відповідь не допомогла? Передати питання організаторам</button>`}
   </div></div>`;
 }
@@ -801,7 +820,7 @@ async function escalate(i) {
   if (!q) return;
   try {
     const r = await api('/api/questions', { method: 'POST', body: JSON.stringify({ text: q.content, asker: S.asker, draft: m.content }) });
-    m.qid = r.question.id; paintChat(); toast('Питання передано організаторам');
+    m.qid = r.question.id; paintChat(); setUni('salute', 3500); toast('Питання передано організаторам');
     refreshMyQuestions(); refreshMe();
   } catch (e) { toast(e.message); }
 }
@@ -811,7 +830,7 @@ async function ask(q) {
   const history = S.chat.filter(m => !m.local && !m.pending).map(({ role, content }) => ({ role, content: content.replace(/\[\[ORG\]\]/g, '') }));
   S.chat.push({ role: 'user', content: q });
   const msg = { role: 'assistant', content: '', pending: true };
-  S.chat.push(msg); paintChat();
+  S.chat.push(msg); paintChat(); setUni('think');
   try {
     if (!S.data.ai) throw Object.assign(new Error('off'), { fallback: true });
     const r = await fetch('/api/ask', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ question: q, history, asker: S.asker }) });
@@ -835,6 +854,7 @@ async function ask(q) {
     else msg.content = err.message || 'Не вдалося отримати відповідь.';
   }
   msg.pending = false; S.asking = false; paintChat();
+  setUni(msg.qid ? 'salute' : 'happy', msg.qid ? 3500 : 2600);
 }
 function localAnswer(q) {
   const s = q.toLowerCase();
@@ -908,8 +928,8 @@ function viewAdmin() {
 }
 function adminTodoView(todo) {
   return `<div class="tile"><span class="kicker">КОНТРОЛЬ НАПОВНЕННЯ</span><h3>${todo.length ? 'Ще треба заповнити' : 'Усе заповнено ✓'}</h3>
-    ${todo.length ? `<ul class="todo">${todo.map(([tab, text]) => `<li><button class="link" data-atab="${tab}">${esc(text)} ${ic('arrow')}</button></li>`).join('')}</ul>` : '<p>Усі розділи мають дані. Claude знає відповіді на основні питання.</p>'}
-    <p class="fine">Чим повніші дані, тим точніше відповідає Claude: він бере інформацію саме звідси.</p></div>`;
+    ${todo.length ? `<ul class="todo">${todo.map(([tab, text]) => `<li><button class="link" data-atab="${tab}">${esc(text)} ${ic('arrow')}</button></li>`).join('')}</ul>` : '<p>Усі розділи мають дані. Юніончик знає відповіді на основні питання.</p>'}
+    <p class="fine">Чим повніші дані, тим точніше відповідає Юніончик: він бере інформацію саме звідси.</p></div>`;
 }
 function tgCard() {
   const g = S.admin.tg;
@@ -920,7 +940,7 @@ function tgCard() {
     <p class="fine">Натисніть кнопку, оберіть вашу групу — бот додасться туди й сам запам’ятає, куди надсилати питання. Після цього натисніть «Перевірити».</p>
     <div class="row-btns"><a class="btn btn-lift" href="${esc(g.linkGroup)}" target="_blank" rel="noopener noreferrer">Підключити групу ${ic('ext')}</a><a class="btn btn-ghost" href="${esc(g.linkPrivate)}" target="_blank" rel="noopener noreferrer">Лише мені в особисті</a><button class="btn btn-ghost" data-act="tg-refresh">Перевірити</button></div></div>`;
   return `<div class="tile"><span class="kicker">TELEGRAM · @${esc(g.bot)} · ПІДКЛЮЧЕНО</span><h3>Питання йдуть у «${esc(g.chatTitle)}»</h3>
-    <p class="fine">Коли Claude не знає відповіді, питання миттєво з’являється в Telegram. Відповідайте реплаєм (Reply) — Claude відшліфує текст, учасник отримає відповідь на сайті й push, а відповідь піде в базу знань. Команда /open — показати всі питання без відповіді.</p>
+    <p class="fine">Коли Юніончик не знає відповіді, питання миттєво з’являється в Telegram. Відповідайте реплаєм (Reply) — Юніончик відшліфує текст, учасник отримає відповідь на сайті й push, а відповідь піде в базу знань. Команда /open — показати всі питання без відповіді.</p>
     <div class="row-btns"><button class="btn btn-ghost" data-act="tg-test">Надіслати тест</button><button class="btn btn-ghost" data-act="tg-unlink">Відключити</button></div></div>`;
 }
 function adminQuestions(d) {
@@ -929,15 +949,15 @@ function adminQuestions(d) {
     <div class="tile"><span class="kicker">${ic('clock')} ЧЕКАЮТЬ НА ВІДПОВІДЬ · ${open.length}</span>
       ${open.length ? open.map(q => `<form class="qa" data-qid="${esc(q.id)}">
         <b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімний відвідувач')} · ${esc(fmtDate(q.createdAt))}</small>
-        ${q.draft ? `<details><summary>Що відповів Claude</summary><p class="fine">${esc(q.draft.replace(/\[\[ORG\]\]/g, ''))}</p></details>` : ''}
+        ${q.draft ? `<details><summary>Що відповів Юніончик</summary><p class="fine">${esc(q.draft.replace(/\[\[ORG\]\]/g, ''))}</p></details>` : ''}
         <label class="field"><span>Ваша відповідь (коротко)</span><textarea name="answer" rows="3" required></textarea></label>
-        <label class="check"><input type="checkbox" name="polish" checked> Claude допрацює текст (без нових фактів)</label>
-        <label class="check"><input type="checkbox" name="kb" checked> Додати в базу знань Claude</label>
+        <label class="check"><input type="checkbox" name="polish" checked> Юніончик допрацює текст (без нових фактів)</label>
+        <label class="check"><input type="checkbox" name="kb" checked> Додати в базу знань Юніончика</label>
         <div class="row-btns"><button class="btn btn-lift" type="submit">${ic('send')} Відповісти</button><button class="btn btn-ghost" type="button" data-del-q="${esc(q.id)}">${ic('trash')}</button></div>
       </form>`).join('') : '<p>Нових питань немає.</p>'}
     </div>
     <div class="tile"><span class="kicker">БАЗА ЗНАНЬ CLAUDE · ${d.knowledge.length}</span>
-      ${d.knowledge.length ? d.knowledge.map(k => `<div class="adm-row"><div><b>${esc(k.q)}</b><p>${esc(k.a)}</p></div><button class="icon-btn" data-del-kb="${esc(k.id)}" aria-label="Прибрати з бази знань">${ic('trash')}</button></div>`).join('') : '<p>Тут з’являтимуться ваші відповіді. Claude використовує їх для наступних учасників.</p>'}
+      ${d.knowledge.length ? d.knowledge.map(k => `<div class="adm-row"><div><b>${esc(k.q)}</b><p>${esc(k.a)}</p></div><button class="icon-btn" data-del-kb="${esc(k.id)}" aria-label="Прибрати з бази знань">${ic('trash')}</button></div>`).join('') : '<p>Тут з’являтимуться ваші відповіді. Юніончик використовує їх для наступних учасників.</p>'}
       ${done.length ? `<details><summary>Відповідені питання (${done.length})</summary>${done.map(q => `<div class="adm-row"><div><b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімно')}${q.answeredBy === 'telegram' ? ` · відповідь з Telegram${q.answeredByName ? ' (' + esc(q.answeredByName) + ')' : ''}` : ''}</small><p>${esc(q.final)}</p></div></div>`).join('')}</details>` : ''}
     </div></div>`;
 }
@@ -945,7 +965,7 @@ function adminAnnouncements(d) {
   return `<div class="admin-2">
     <form class="tile" id="ann-form"><span class="kicker">${ic('send')} НОВЕ ОГОЛОШЕННЯ</span><h3>Написати всім.</h3>
       <label class="field"><span>Заголовок</span><input name="title" maxlength="90" placeholder="Наприклад: Зміна локації тренінгу" required></label>
-      <label class="field"><span>Текст повідомлення</span><textarea name="text" maxlength="650" rows="5" placeholder="Що саме учасникам потрібно знати?" required></textarea><small>Повідомлення залишиться в розділі «Оголошення», Claude теж його знатиме.</small></label>
+      <label class="field"><span>Текст повідомлення</span><textarea name="text" maxlength="650" rows="5" placeholder="Що саме учасникам потрібно знати?" required></textarea><small>Повідомлення залишиться в розділі «Оголошення», Юніончик теж його знатиме.</small></label>
       <label class="field"><span>Важливість</span><select name="kind"><option value="info">Звичайне</option><option value="important">Важливе</option><option value="urgent">Термінове</option></select></label>
       <label class="check"><input type="checkbox" name="push" checked> Надіслати push на телефони підписаних учасників</label>
       <button class="btn btn-lift full" type="submit">${ic('send')} Опублікувати повідомлення</button>
@@ -1161,7 +1181,7 @@ function parseRoute() {
   return { name: name || 'home', arg: decodeURIComponent(arg) };
 }
 const VIEWS = { home: viewHome, program: () => viewProgram(S.route.arg), event: () => viewEvent(S.route.arg), travel: viewTravel, info: viewInfo, updates: viewUpdates, me: viewMe, my: viewMe, more: viewMore, ask: viewAsk, admin: viewAdmin };
-const TITLES = { home: 'MTWTU Youth Forum 2026 · Плай', program: 'Програма', event: 'Подія', travel: 'Доїзд', info: 'Корисне', updates: 'Оголошення', me: 'Мій форум', my: 'Мій форум', more: 'Меню', ask: 'Запитай Claude', admin: 'Організаторам' };
+const TITLES = { home: 'MTWTU Youth Forum 2026 · Плай', program: 'Програма', event: 'Подія', travel: 'Доїзд', info: 'Корисне', updates: 'Оголошення', me: 'Мій форум', my: 'Мій форум', more: 'Меню', ask: 'Запитай Юніончика', admin: 'Організаторам' };
 function render(scrollTop = false) {
   if (!S.data) return;
   const app = $('#app');
@@ -1236,6 +1256,7 @@ document.addEventListener('click', async ev => {
       case 'unsub': unsubscribe(); break;
       case 'theme': toggleTheme(); break;
       case 'me-logout': await api('/api/me/logout', { method: 'POST' }); S.me = null; toast('Ви вийшли'); render(); break;
+      case 'uni-poke': S.uniAwake = true; if (!S.asking) setUni('happy', 1800); break;
       case 'admin-push': subscribe(true); break;
       case 'tg-refresh': await loadAdmin(); toast(S.admin.tg?.connected ? 'Telegram підключено' : 'Ще не підключено'); break;
       case 'tg-test': await api('/api/admin/telegram/test', { method: 'POST' }).then(() => toast('Тест надіслано в Telegram')).catch(e => toast(e.message)); break;
@@ -1289,7 +1310,7 @@ document.addEventListener('submit', async ev => {
     }
   } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
 });
-document.addEventListener('input', e => { if (e.target.id === 'ask-input') { e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
+document.addEventListener('input', e => { if (e.target.id === 'ask-input') { if (!S.asking) { S.uniAwake = true; setUni(e.target.value.trim() ? 'listen' : 'idle'); } e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
 document.addEventListener('keydown', e => { if (e.target.id === 'ask-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ask-form').requestSubmit(); } });
 
 /* ============ theme ============ */

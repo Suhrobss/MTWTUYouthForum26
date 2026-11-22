@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#F1F0EA" media="(prefers-color-scheme: light)">
   <meta name="theme-color" content="#0A100E" media="(prefers-color-scheme: dark)">
-  <meta name="description" content="MTWTU Youth Forum 2026 · 7–10 грудня · ГК «Плай». Програма, афіші, доїзд, оголошення та консьєрж на базі Claude.">
+  <meta name="description" content="MTWTU Youth Forum 2026 · 7–10 грудня · ГК «Плай». Програма, афіші, доїзд, оголошення та помічник Юніончик.">
   <meta property="og:title" content="MTWTU Youth Forum 2026 · Плай">
   <meta property="og:description" content="Чотири глави форуму. 7–10 грудня 2026, Карпати.">
   <meta property="og:image" content="https://raw.githubusercontent.com/Suhrobss/MY/main/images/forum.jpg">
@@ -15,7 +15,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;500;700;900&family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap">
-  <link rel="stylesheet" href="/styles.css?v=6">
+  <link rel="stylesheet" href="/styles.css?v=7">
   <title>MTWTU Youth Forum 2026 · Плай</title>
 </head>
 <body>
@@ -33,7 +33,7 @@
       <a href="#/me" data-route="me">Мій форум<span class="dot me-dot" hidden style="background:var(--t-green)"></span></a>
     </nav>
     <div class="top-actions">
-      <a class="ask-pill" href="#/ask" data-route="ask"><span class="spark" aria-hidden="true"></span>Запитай Claude</a>
+      <a class="ask-pill" href="#/ask" data-route="ask"><span class="uni uni-xs" aria-hidden="true" data-uni-static></span>Запитай Юніончика</a>
       <button class="icon-btn" id="theme-btn" type="button" aria-label="Перемкнути тему"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M21 13A9 9 0 1 1 11 3a7 7 0 0 0 10 10Z"/></svg></button>
     </div>
   </header>
@@ -43,7 +43,7 @@
   <nav class="dock" aria-label="Швидка навігація">
     <a href="#/" data-route="home"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m2 20 8-14 5 8 3-4 4 10Z"/></svg><span>Плай</span></a>
     <a href="#/program" data-route="program"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16M4 12h10M4 18h13"/></svg><span>Програма</span></a>
-    <a href="#/ask" data-route="ask" class="dock-ask"><span class="dock-orb" aria-hidden="true"><span class="spark"></span></span><span>Claude</span></a>
+    <a href="#/ask" data-route="ask" class="dock-ask"><span class="dock-orb" aria-hidden="true"><span class="uni" data-uni-static></span></span><span>Юніончик</span></a>
     <a href="#/me" data-route="me"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><span>Мій форум</span></a>
     <a href="#/more" data-route="more"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1.6"/><circle cx="12" cy="12" r="1.6"/><circle cx="19" cy="12" r="1.6"/></svg><span>Ще</span><span class="dot" hidden></span></a>
   </nav>
@@ -54,6 +54,6 @@
     <div class="film-frame"></div>
   </dialog>
   <dialog id="editor" class="editor" aria-label="Редагування події"></dialog>
-  <script src="/app.js?v=6" defer></script>
+  <script src="/app.js?v=7" defer></script>
 </body>
 </html>
