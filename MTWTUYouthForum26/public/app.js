@@ -678,7 +678,7 @@ function viewEvent(id) {
         <div><dt>Дата</dt><dd>${esc(e.date.slice(8))} грудня 2026</dd></div>
         <div><dt>Час</dt><dd>${esc(formatRange(e))}</dd></div>
         <div><dt>Місце</dt><dd>${esc(e.venue || 'Уточнюється')}</dd></div>
-        <div><dt>Статус</dt><dd><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></dd></div>
+        ${e.status !== 'tentative' ? `<div><dt>Статус</dt><dd><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></dd></div>` : ''}
         ${e.track === 'parallel' ? `<div><dt>Формат</dt><dd>Паралельна сесія${e.capacity ? `, ${e.capacity} місць` : ''}</dd></div>` : ''}
         ${e.speakerNames ? `<div><dt>Учасники / спікери</dt><dd>${esc(e.speakerNames)}</dd></div>` : ''}
       </dl>
@@ -932,9 +932,9 @@ function renderMsg(m, i) {
   if (m.role === 'user') return `<div class="msg me"><p>${esc(m.content)}</p></div>`;
   const ids = [...new Set([...(m.content.matchAll(/\[\[([\w-]+)\]\]/g))].map(x => x[1]))].filter(evById).slice(0, 4);
   return `<div class="msg ai ${m.pending ? 'typing' : ''}">${uni('uni-sm' + (m.pending ? ' is-think' : m.qid ? ' is-salute' : ''))}<div class="msg-body">${m.content ? md(m.content) : '<span class="dots"><i></i><i></i><i></i></span>'}
-    ${!m.pending && ids.length ? `<div class="msg-cards">${ids.map(id => { const e = evById(id); return `<a href="#/event/${esc(id)}" class="mini t-${chapterOf(e.date).trail}"><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</small><b>${esc(e.title)}</b><span>${esc(e.venue || 'Локація уточнюється')} · ${statusLabel(e.status)}</span></a>`; }).join('')}</div>` : ''}
+    ${!m.pending && ids.length ? `<div class="msg-cards">${ids.map(id => { const e = evById(id); return `<a href="#/event/${esc(id)}" class="mini t-${chapterOf(e.date).trail}"><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</small><b>${esc(e.title)}</b><span>${esc(e.venue || 'Локація уточнюється')}</span></a>`; }).join('')}</div>` : ''}
     ${m.local ? '' : ''}
-    ${m.pending ? '' : m.qid ? `<p class="escalated">${ic('send')} Питання передано організаторам. Відповідь з’явиться тут${S.me ? ' і в «Мій форум»' : ''}.</p>` : `<button class="link escalate" data-escalate="${i}">${ic('send')} Відповідь не допомогла? Передати питання організаторам</button>`}
+    ${m.pending ? '' : m.qid ? (S.myQuestions.find(q => q.id === m.qid && q.answer) ? `<div class="org-answer"><small>${ic('info')} ВІДПОВІДЬ ОРГАНІЗАТОРІВ</small><p>${esc(S.myQuestions.find(q => q.id === m.qid).answer)}</p></div>` : `<p class="escalated">${ic('send')} Питання передано організаторам. Відповідь з’явиться тут${S.me ? ' і в «Мій форум»' : ''}.</p>`) : `<button class="link escalate" data-escalate="${i}">${ic('send')} Відповідь не допомогла? Передати питання організаторам</button>`}
   </div></div>`;
 }
 function paintChat() {
@@ -951,7 +951,7 @@ async function escalate(i) {
   if (!q) return;
   try {
     const r = await api('/api/questions', { method: 'POST', body: JSON.stringify({ text: q.content, asker: S.asker, draft: m.content }) });
-    m.qid = r.question.id; paintChat(); setUni('salute', 3500); toast('Питання передано організаторам');
+    m.qid = r.question.id; refreshMyQuestions(); paintChat(); setUni('salute', 3500); toast('Питання передано організаторам');
     refreshMyQuestions(); refreshMe();
   } catch (e) { toast(e.message); }
 }
@@ -1085,7 +1085,8 @@ function tgCard() {
     <p class="fine">Натисніть кнопку, оберіть вашу групу — бот додасться туди й сам запам’ятає, куди надсилати питання. Після цього натисніть «Перевірити».</p>
     <div class="row-btns"><a class="btn btn-lift" href="${esc(g.linkGroup)}" target="_blank" rel="noopener noreferrer">Підключити групу ${ic('ext')}</a><a class="btn btn-ghost" href="${esc(g.linkPrivate)}" target="_blank" rel="noopener noreferrer">Лише мені в особисті</a><button class="btn btn-ghost" data-act="tg-refresh">Перевірити</button></div></div>`;
   return `<div class="tile"><span class="kicker">TELEGRAM · @${esc(g.bot)} · ПІДКЛЮЧЕНО</span><h3>Питання йдуть у «${esc(g.chatTitle)}»</h3>
-    <p class="fine">Коли Юніончик не знає відповіді, питання миттєво з’являється в Telegram. Відповідайте реплаєм (Reply) — Юніончик відшліфує текст, учасник отримає відповідь на сайті й push, а відповідь піде в базу знань. Команда /open — показати всі питання без відповіді.</p>
+    <p class="fine">Коли Юніончик не знає відповіді, питання миттєво з’являється в Telegram. Відповідайте реплаєм (Reply) на повідомлення «❓ Питання учасника» — бот покаже, як Юніончик перефразував текст, з кнопками «✅ Надіслати учаснику» і «🔁 Перефразувати» (кожне натискання — ближче до вашого тексту). Після «Надіслати» учасник побачить відповідь на сайті (і отримає push, якщо ввімкнув сповіщення). Команда /open — усі питання без відповіді.</p>
+    <p class="fine">${g.lastUpdateAt ? `Останнє повідомлення від Telegram: ${esc(fmtDate(g.lastUpdateAt))}.` : 'Після перезапуску сервера бот ще не отримував повідомлень.'}${g.lastError ? ` <b>Остання помилка:</b> ${esc(g.lastError)}` : ''}</p>
     <div class="row-btns"><button class="btn btn-ghost" data-act="tg-test">Надіслати тест</button><button class="btn btn-ghost" data-act="tg-unlink">Відключити</button></div></div>`;
 }
 function adminQuestions(d) {
@@ -1096,9 +1097,9 @@ function adminQuestions(d) {
         <b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімний відвідувач')} · ${esc(fmtDate(q.createdAt))}</small>
         ${q.draft ? `<details><summary>Що відповів Юніончик</summary><p class="fine">${esc(q.draft.replace(/\[\[ORG\]\]/g, ''))}</p></details>` : ''}
         <label class="field"><span>Ваша відповідь (коротко)</span><textarea name="answer" rows="3" required></textarea></label>
-        <label class="check"><input type="checkbox" name="polish" checked> Юніончик допрацює текст (без нових фактів)</label>
         <label class="check"><input type="checkbox" name="kb" checked> Додати в базу знань Юніончика</label>
-        <div class="row-btns"><button class="btn btn-lift" type="submit">${ic('send')} Відповісти</button><button class="btn btn-ghost" type="button" data-del-q="${esc(q.id)}">${ic('trash')}</button></div>
+        <div class="qa-preview" hidden></div>
+        <div class="row-btns qa-start"><button class="btn btn-lift" type="button" data-qa-preview="0">${ic('edit')} Підготувати відповідь</button><button class="btn btn-ghost" type="submit" name="mode" value="raw">Надіслати мій текст як є</button><button class="btn btn-ghost" type="button" data-del-q="${esc(q.id)}" aria-label="Видалити питання">${ic('trash')}</button></div>
       </form>`).join('') : '<p>Нових питань немає.</p>'}
     </div>
     <div class="tile"><span class="kicker">БАЗА ЗНАНЬ ЮНІОНЧИКА · ${d.knowledge.length}</span>
@@ -1419,6 +1420,20 @@ document.addEventListener('click', async ev => {
     if (d.scroll) { ev.preventDefault(); const go = () => document.getElementById(d.scroll)?.scrollIntoView({ behavior: 'smooth' }); if (S.route.name !== 'home') { location.hash = '#/'; setTimeout(go, 120); } else go(); return; }
     if (d.copy) { ev.preventDefault(); try { await navigator.clipboard.writeText(d.copy); toast('Посилання скопійовано'); } catch { toast(d.copy); } return; }
     /* admin */
+    if (d.qaPreview !== undefined) {
+      const f = t.closest('form'); const answer = f.elements.answer.value.trim(); if (!answer) { f.elements.answer.focus(); toast('Спершу напишіть відповідь'); return; }
+      const box = f.querySelector('.qa-preview'); const level = Number(d.qaPreview) || 0;
+      t.disabled = true; const label = t.innerHTML; t.innerHTML = '<span class="spin sm"></span> Юніончик думає…';
+      try {
+        const r = await api(`/api/admin/questions/${f.dataset.qid}/preview`, { method: 'POST', body: JSON.stringify({ answer, level }) });
+        box.hidden = false; f.querySelector('.qa-start').hidden = true;
+        box.innerHTML = `<span class="kicker">${ic('star')} ТАК ПОБАЧИТЬ УЧАСНИК · ${esc(r.note)}</span>
+          <textarea name="final" rows="4">${esc(r.text)}</textarea><small class="fine">Можна поправити вручну перед відправкою.</small>
+          <div class="row-btns"><button class="btn btn-ok" type="submit" name="mode" value="final">${ic('send')} Надіслати</button>${r.level < 3 ? `<button class="btn btn-ghost" type="button" data-qa-preview="${r.level + 1}">🔁 Перефразувати</button>` : ''}<button class="btn btn-ghost" type="button" data-qa-cancel>Змінити мій текст</button></div>`;
+      } finally { t.disabled = false; t.innerHTML = label; }
+      return;
+    }
+    if (d.qaCancel !== undefined) { const f = t.closest('form'); const box = f.querySelector('.qa-preview'); box.hidden = true; box.innerHTML = ''; f.querySelector('.qa-start').hidden = false; f.elements.answer.focus(); return; }
     if (d.atab) { S.admin.tab = d.atab; rerender(); return; }
     if (d.pcat) { S.admin.pcat = d.pcat; rerender(); return; }
     if (d.txReset) { const el = t.closest('form')?.elements[d.txReset]; if (el) { el.value = TXD[d.txReset] ?? ''; el.dispatchEvent(new Event('input', { bubbles: true })); toast('Початковий текст повернено — натисніть «Зберегти тексти»'); } return; }
@@ -1492,8 +1507,11 @@ document.addEventListener('submit', async ev => {
       toast('Збережено'); await loadAdmin(); load(); return;
     }
     if (f.classList.contains('qa')) {
-      const btn = f.querySelector('[type=submit]'); btn.disabled = true; btn.textContent = 'Надсилаємо…';
-      const r = await api(`/api/admin/questions/${f.dataset.qid}/answer`, { method: 'POST', body: JSON.stringify({ answer: data.answer, polish: !!data.polish, addToKnowledge: !!data.kb }) });
+      const btn = ev.submitter || f.querySelector('[type=submit]'); const btnHtml = btn.innerHTML; btn.disabled = true; btn.textContent = 'Надсилаємо…';
+      const raw = ev.submitter?.value === 'raw';
+      const final = raw ? '' : (f.querySelector('[name=final]')?.value || '').trim();
+      if (!raw && !final) { btn.disabled = false; btn.innerHTML = btnHtml; f.querySelector('[data-qa-preview]')?.click(); return; }
+      const r = await api(`/api/admin/questions/${f.dataset.qid}/answer`, { method: 'POST', body: JSON.stringify({ answer: data.answer, final, polish: false, addToKnowledge: !!data.kb }) });
       toast(`Відповідь надіслано${r.push?.sent ? ` · push: ${r.push.sent}` : ''}`); await loadAdmin(); return;
     }
   } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
@@ -1522,6 +1540,22 @@ setInterval(() => {
 }, 1000);
 setInterval(async () => { await load(true); if (S.me) await refreshMe(); if (!['ask', 'admin'].includes(S.route.name) && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,textarea,select')) { const y = scrollY; render(); scrollTo(0, y); } }, 60000);
 
+// organizers' answers arrive without reload
+async function checkAnswers(force) {
+  const waiting = S.chat.some(m => m.qid) || (S.myQuestions || []).some(q => q.status === 'open');
+  if (!force && (!waiting || document.hidden)) return;
+  const before = new Set((S.myQuestions || []).filter(q => q.answer).map(q => q.id + '|' + q.answer));
+  await refreshMyQuestions();
+  const fresh = (S.myQuestions || []).filter(q => q.answer && !before.has(q.id + '|' + q.answer));
+  if (!fresh.length || force === 'quiet') return;
+  toast('Організатори відповіли на ваше питання'); setUni('happy', 3000);
+  if (S.me) await refreshMe();
+  if (S.route.name === 'ask') { const i = $('#ask-input'); if (i && i.value) paintChat(); else { const y = scrollY; render(); scrollTo(0, y); } }
+  else if (S.route.name === 'me') { const y = scrollY; render(); scrollTo(0, y); }
+}
+setInterval(() => checkAnswers(false), 20000);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) checkAnswers(false); });
+
 /* ============ boot ============ */
 (async () => {
   S.route = parseRoute();
@@ -1532,6 +1566,7 @@ setInterval(async () => { await load(true); if (S.me) await refreshMe(); if (!['
   const [ok] = await Promise.all([load(), refreshMe()]);
   if (code) { try { await loginWithCode(code); } catch (e) { toast(e.message); } }
   if (ok) render();
+  checkAnswers('quiet');
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
 })();
 })();
