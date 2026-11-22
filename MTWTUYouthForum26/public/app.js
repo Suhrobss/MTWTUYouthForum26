@@ -879,6 +879,7 @@ function adminTodo(d) {
   if (!d.settings.coordinator) t.push(['settings', 'Контакт координатора для учасників']);
   if (!d.settings.telegramUrl) t.push(['settings', 'Посилання на Telegram-канал (коли буде)']);
   if (!d.settings.driveUrl) t.push(['settings', 'Посилання на Google Drive з фото (коли буде)']);
+  if (S.admin.tg?.configured && !S.admin.tg.connected) t.push(['questions', 'Підключіть групу Telegram для питань учасників']);
   const open = d.questions.filter(q => q.status === 'open').length; if (open) t.unshift(['questions', `${open} питань учасників чекають на відповідь`]);
   return t;
 }
@@ -909,9 +910,21 @@ function adminTodoView(todo) {
     ${todo.length ? `<ul class="todo">${todo.map(([tab, text]) => `<li><button class="link" data-atab="${tab}">${esc(text)} ${ic('arrow')}</button></li>`).join('')}</ul>` : '<p>Усі розділи мають дані. Claude знає відповіді на основні питання.</p>'}
     <p class="fine">Чим повніші дані, тим точніше відповідає Claude: він бере інформацію саме звідси.</p></div>`;
 }
+function tgCard() {
+  const g = S.admin.tg;
+  if (!g) return '';
+  if (!g.configured) return `<div class="tile"><span class="kicker">TELEGRAM</span><h3>Бот ще не налаштований</h3><p class="fine">Додайте змінну TELEGRAM_BOT_TOKEN у Railway → Variables і перезапустіть сервіс.</p></div>`;
+  if (!g.bot) return `<div class="tile"><span class="kicker">TELEGRAM</span><h3>Бот запускається…</h3><p class="fine">Токен є, але бот ще не відповів Telegram. Оновіть сторінку за хвилину або перевірте токен.</p><button class="btn btn-ghost" data-act="tg-refresh">Оновити</button></div>`;
+  if (!g.connected) return `<div class="tile"><span class="kicker">TELEGRAM · @${esc(g.bot)}</span><h3>Підключіть групу організаторів</h3>
+    <p class="fine">Натисніть кнопку, оберіть вашу групу — бот додасться туди й сам запам’ятає, куди надсилати питання. Після цього натисніть «Перевірити».</p>
+    <div class="row-btns"><a class="btn btn-lift" href="${esc(g.linkGroup)}" target="_blank" rel="noopener noreferrer">Підключити групу ${ic('ext')}</a><a class="btn btn-ghost" href="${esc(g.linkPrivate)}" target="_blank" rel="noopener noreferrer">Лише мені в особисті</a><button class="btn btn-ghost" data-act="tg-refresh">Перевірити</button></div></div>`;
+  return `<div class="tile"><span class="kicker">TELEGRAM · @${esc(g.bot)} · ПІДКЛЮЧЕНО</span><h3>Питання йдуть у «${esc(g.chatTitle)}»</h3>
+    <p class="fine">Коли Claude не знає відповіді, питання миттєво з’являється в Telegram. Відповідайте реплаєм (Reply) — Claude відшліфує текст, учасник отримає відповідь на сайті й push, а відповідь піде в базу знань. Команда /open — показати всі питання без відповіді.</p>
+    <div class="row-btns"><button class="btn btn-ghost" data-act="tg-test">Надіслати тест</button><button class="btn btn-ghost" data-act="tg-unlink">Відключити</button></div></div>`;
+}
 function adminQuestions(d) {
   const open = d.questions.filter(q => q.status === 'open'), done = d.questions.filter(q => q.status === 'answered');
-  return `<div class="admin-2">
+  return `${tgCard()}<div class="admin-2">
     <div class="tile"><span class="kicker">${ic('clock')} ЧЕКАЮТЬ НА ВІДПОВІДЬ · ${open.length}</span>
       ${open.length ? open.map(q => `<form class="qa" data-qid="${esc(q.id)}">
         <b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімний відвідувач')} · ${esc(fmtDate(q.createdAt))}</small>
@@ -924,7 +937,7 @@ function adminQuestions(d) {
     </div>
     <div class="tile"><span class="kicker">БАЗА ЗНАНЬ CLAUDE · ${d.knowledge.length}</span>
       ${d.knowledge.length ? d.knowledge.map(k => `<div class="adm-row"><div><b>${esc(k.q)}</b><p>${esc(k.a)}</p></div><button class="icon-btn" data-del-kb="${esc(k.id)}" aria-label="Прибрати з бази знань">${ic('trash')}</button></div>`).join('') : '<p>Тут з’являтимуться ваші відповіді. Claude використовує їх для наступних учасників.</p>'}
-      ${done.length ? `<details><summary>Відповідені питання (${done.length})</summary>${done.map(q => `<div class="adm-row"><div><b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімно')}</small><p>${esc(q.final)}</p></div></div>`).join('')}</details>` : ''}
+      ${done.length ? `<details><summary>Відповідені питання (${done.length})</summary>${done.map(q => `<div class="adm-row"><div><b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімно')}${q.answeredBy === 'telegram' ? ` · відповідь з Telegram${q.answeredByName ? ' (' + esc(q.answeredByName) + ')' : ''}` : ''}</small><p>${esc(q.final)}</p></div></div>`).join('')}</details>` : ''}
     </div></div>`;
 }
 function adminAnnouncements(d) {
@@ -987,7 +1000,7 @@ function adminSettings(d) {
 }
 async function loadAdmin() {
   try { S.admin.me = await api('/api/admin/me'); } catch { S.admin.me = { admin: false, enabled: false }; }
-  if (S.admin.me.admin) { try { S.admin.data = await api('/api/admin/state'); } catch (e) { toast(e.message); } }
+  if (S.admin.me.admin) { try { S.admin.data = await api('/api/admin/state'); S.admin.tg = await api('/api/admin/telegram').catch(() => null); } catch (e) { toast(e.message); } }
   if (S.route.name === 'admin') { const y = scrollY; render(); scrollTo(0, y); }
 }
 function openDialog(html) { const dlg = $('#editor'); dlg.innerHTML = html; dlg.showModal(); }
@@ -1223,6 +1236,9 @@ document.addEventListener('click', async ev => {
       case 'theme': toggleTheme(); break;
       case 'me-logout': await api('/api/me/logout', { method: 'POST' }); S.me = null; toast('Ви вийшли'); render(); break;
       case 'admin-push': subscribe(true); break;
+      case 'tg-refresh': await loadAdmin(); toast(S.admin.tg?.connected ? 'Telegram підключено' : 'Ще не підключено'); break;
+      case 'tg-test': await api('/api/admin/telegram/test', { method: 'POST' }).then(() => toast('Тест надіслано в Telegram')).catch(e => toast(e.message)); break;
+      case 'tg-unlink': if (!confirm('Відключити Telegram-групу?')) break; await api('/api/admin/telegram/unlink', { method: 'POST' }); await loadAdmin(); break;
       case 'export-codes': {
         const rows = [['Ім’я', 'Код', 'Посилання', 'Група', 'Стіл', 'Місце'], ...S.admin.data.participants.map(p => [p.name, p.code, meLink(p.code), GROUP_NAME(p.group), p.table || '', p.seat || ''])];
         const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
