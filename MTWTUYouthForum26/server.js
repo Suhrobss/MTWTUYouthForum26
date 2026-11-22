@@ -73,6 +73,7 @@ function loadStore() {
   store.unionize ||= seed.unionize;
   store.transport ||= seed.transport;
   store.settings = { ...seed.settings, ...(store.settings || {}) };
+  if (!store.texts || typeof store.texts !== 'object' || Array.isArray(store.texts)) store.texts = {};
   if (webpush) {
     let pub = process.env.VAPID_PUBLIC_KEY, priv = process.env.VAPID_PRIVATE_KEY;
     if (!pub || !priv) { store.vapid ||= webpush.generateVAPIDKeys(); pub = store.vapid.publicKey; priv = store.vapid.privateKey; }
@@ -95,7 +96,7 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
   'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
-  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src https://player.vimeo.com; base-uri 'self'; form-action 'self'"
+  'Content-Security-Policy': "default-src 'self'; img-src 'self' data: https:; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'"
 };
 function send(res, status, body, headers = {}) { res.writeHead(status, { ...SECURITY_HEADERS, ...headers }); res.end(body); }
 const json = (res, status, obj, headers = {}) => send(res, status, JSON.stringify(obj), { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', ...headers });
@@ -340,7 +341,7 @@ function publicPayload() {
     announcements: [...store.announcements].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
     sessionCounts: sessionCounts(),
     unionize: { tables: store.unionize.tables.map(t => ({ ...t, taken: tablesTaken[t.n] || 0 })) },
-    speakers: store.speakers, sponsors: store.sponsors, transport: store.transport, settings: store.settings,
+    speakers: store.speakers, sponsors: store.sponsors, transport: store.transport, settings: store.settings, texts: store.texts,
     webPushAvailable: Boolean(webpush && store.vapidPublicKey), vapidPublicKey: store.vapidPublicKey || '',
     ai: Boolean(ANTHROPIC_API_KEY)
   };
@@ -566,7 +567,7 @@ async function api(req, res, url) {
     if (col === 'state' && m === 'GET') return json(res, 200, {
       events: store.events, announcements: store.announcements, subscriberCount: store.subscriptions.length,
       participants: store.participants, questions: store.questions, knowledge: store.knowledge,
-      speakers: store.speakers, sponsors: store.sponsors, unionize: store.unionize, transport: store.transport, settings: store.settings, sessionCounts: sessionCounts()
+      speakers: store.speakers, sponsors: store.sponsors, unionize: store.unionize, transport: store.transport, settings: store.settings, texts: store.texts, sessionCounts: sessionCounts()
     });
 
     if (col === 'announcements') {
@@ -651,6 +652,15 @@ async function api(req, res, url) {
       if (i < 0) throw fail(404, 'Не знайдено');
       if (m === 'PUT') { store[col][i] = cleanPerson(body, store[col][i], kind); await saveStore(); return json(res, 200, { ok: true, item: store[col][i] }); }
       if (m === 'DELETE') { store[col].splice(i, 1); await saveStore(); return json(res, 200, { ok: true }); }
+    }
+
+    if (col === 'texts' && m === 'PUT') {
+      const inp = body.texts && typeof body.texts === 'object' ? body.texts : {};
+      for (const [k, v] of Object.entries(inp).slice(0, 400)) {
+        if (!/^[a-z0-9]+(\.[a-zA-Z0-9]+){1,3}$/.test(k)) continue;
+        if (v === null) delete store.texts[k]; else store.texts[k] = String(v).replace(/\r/g, '').slice(0, 4000);
+      }
+      await saveStore(); return json(res, 200, { ok: true, texts: store.texts });
     }
 
     if (col === 'settings' && m === 'PUT') {
