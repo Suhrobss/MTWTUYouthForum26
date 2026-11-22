@@ -17,7 +17,6 @@ const UNI_SAY = {
   salute: 'Передав організаторам! Відповідь прийде сюди', sleep: 'Zzz… Торкнись, щоб розбудити', love: 'Дуже приємно! Звертайся ще', oops: 'Ой… щось пішло не так. Спробуй ще раз',
   wow: 'Ого, цікаве питання!', giggle: 'Хі-хі, лоскотно!', wink: 'Я все знаю про форум 😉'.replace(' 😉', ''), wave: 'Привіт-привіт!', stretch: 'Розімнуся трішки…', yawn: 'Ох, довгий був день…', look: 'Хтось мене кликав?', hop: 'Гоп!', spin: 'Вжух!'
 };
-const UNI_TIPS = ['Спитай, що зараз відбувається', 'Знаю, де твій стіл на Unionize', 'Підкажу, коли автобус', 'Розкажу про будь-якого спікера', 'Не знаю відповіді — спитаю організаторів', 'Спитай про паралельні тренінги'];
 const UNI_STATES = ['listen', 'think', 'happy', 'salute', 'sleep', 'love', 'oops', 'wow', 'giggle', 'wink', 'wave', 'stretch', 'yawn', 'look', 'hop', 'spin'];
 const uni = (cls = '', live = false) => `<span class="uni ${cls}"${live ? ' data-uni-live' : ''} aria-hidden="true">${UNI_SVG}</span>`;
 const kyivHour = () => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date()) % 24;
@@ -45,7 +44,7 @@ function uniIdleTick() {
     const live = document.querySelector('[data-uni-live]');
     if (live && !document.hidden && !S.asking && (S.uni === 'idle' || !S.uni)) {
       const h = kyivHour();
-      if (Math.random() < .35 && document.querySelector('[data-uni-say]')) uniPaint('idle', UNI_TIPS[uniTipIdx++ % UNI_TIPS.length]);
+      if (Math.random() < .35 && document.querySelector('[data-uni-say]')) { const tips = TL('uni.tips'); if (tips.length) uniPaint('idle', tips[uniTipIdx++ % tips.length]); }
       else { const [st, ms] = h >= 21 && Math.random() < .3 ? ['yawn', 2600] : UNI_IDLE[Math.floor(Math.random() * UNI_IDLE.length)]; uniPaint(st); clearTimeout(uniTimer); uniTimer = setTimeout(() => { if (S.uni === 'idle' || !S.uni) uniPaint('idle'); }, ms); }
     }
     uniIdleTick();
@@ -71,29 +70,107 @@ document.addEventListener('pointermove', e => {
 }, { passive: true });
 const WEEKDAY = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', '2026-12-07': 'Понеділок', '2026-12-08': 'Вівторок', '2026-12-09': 'Середа', '2026-12-10': 'Четвер' };
 const CHAPTERS = [
-  { id: '2026-12-07', idx: '01', small: 'ПРИБУТТЯ', name: 'Знайомство', tag: 'Починається нова історія', sub: 'Від реєстрації до першого спільного вечора.', trail: 'green', trailName: 'Зелена траса', trailNote: 'М’який старт: знайомимось і заселяємось.' },
-  { id: '2026-12-08', idx: '02', small: 'ЛЮДИ ТА ІДЕЇ', name: 'У русі', tag: 'Досвід, який проживаємо разом', sub: 'Дискусії, практичні блоки, Unionize і Bowling Night.', trail: 'blue', trailName: 'Синя траса', trailNote: 'Набираємо швидкість: найнасиченіший день.' },
-  { id: '2026-12-09', idx: '03', small: 'СПІЛЬНА ДІЯ', name: 'Більше ніж слова', tag: 'Від кейсів до власних рішень', sub: 'Навчання, екскурсія, підсумки та фінальний вечір.', trail: 'red', trailName: 'Червона траса', trailNote: 'Від кейсів — до гір і фінальної ночі.' },
-  { id: '2026-12-10', idx: '04', small: 'ПРОДОВЖЕННЯ', name: 'Що далі?', tag: 'Найважливіше відбувається після', sub: 'Завершальний ранок і повернення додому.', trail: 'black', trailName: 'Чорна траса', trailNote: 'Найскладніше — попрощатися.' }
+  { id: '2026-12-07', idx: '01', trail: 'green', trailName: 'Зелена траса' },
+  { id: '2026-12-08', idx: '02', trail: 'blue', trailName: 'Синя траса' },
+  { id: '2026-12-09', idx: '03', trail: 'red', trailName: 'Червона траса' },
+  { id: '2026-12-10', idx: '04', trail: 'black', trailName: 'Чорна траса' }
+].map((c, i) => Object.defineProperties(c, Object.fromEntries(['small', 'name', 'tag', 'note', 'sub'].map(f => [f, { get: () => T(`day${i + 1}.${f}`), enumerable: true }]))));
+
+/* ============ editable site texts (admin → «Тексти сайту») ============ */
+const TX = [
+  ['home.kicker', 'Головна · перший екран', 'Надпис над заголовком', 'MTWTU YOUTH FORUM 2026 · Карпати'],
+  ['home.title1', 'Головна · перший екран', 'Заголовок — перший рядок', 'Сила молоді —'],
+  ['home.title2', 'Головна · перший екран', 'Заголовок — другий рядок (контурний)', 'сила сьогодення'],
+  ['home.lead', 'Головна · перший екран', 'Текст під заголовком (порожньо — не показувати)', '', 'text'],
+  ['home.cta', 'Головна · перший екран', 'Кнопка програми', 'Програма 7–10 грудня'],
+  ['home.place', 'Головна · перший екран', 'Місце в нижньому рядку', 'Плав’я · Львівська обл.'],
+  ['home.daysKicker', 'Головна · чотири дні', 'Надпис над заголовком', '07—10 ГРУДНЯ'],
+  ['home.daysTitle1', 'Головна · чотири дні', 'Заголовок — перший рядок', 'Чотири дні'],
+  ['home.daysTitle2', 'Головна · чотири дні', 'Заголовок — другий рядок', 'форуму.'],
+  ['home.daysLead', 'Головна · чотири дні', 'Текст під заголовком', 'Кожен день — новий ритм та нові знання'],
+  ['day1.small', 'День 1 · 07 грудня', 'Мітка', 'ПРИБУТТЯ'],
+  ['day1.name', 'День 1 · 07 грудня', 'Назва дня', 'Знайомство'],
+  ['day1.tag', 'День 1 · 07 грудня', 'Підзаголовок', 'Починається нова історія'],
+  ['day1.note', 'День 1 · 07 грудня', 'Рядок внизу картки (головна)', 'М’який старт: заселяємось і знайомимось'],
+  ['day1.sub', 'День 1 · 07 грудня', 'Опис дня (сторінка «Програма»)', 'Від реєстрації до першого спільного вечора.'],
+  ['day2.small', 'День 2 · 08 грудня', 'Мітка', 'ЛЮДИ ТА ІДЕЇ'],
+  ['day2.name', 'День 2 · 08 грудня', 'Назва дня', 'Навчаємось та граємо'],
+  ['day2.tag', 'День 2 · 08 грудня', 'Підзаголовок', 'Нові знання та обмін досвідом'],
+  ['day2.note', 'День 2 · 08 грудня', 'Рядок внизу картки (головна)', 'Набираємо швидкість: найнасиченіший день.'],
+  ['day2.sub', 'День 2 · 08 грудня', 'Опис дня (сторінка «Програма»)', 'Дискусії, практичні блоки, Unionize і Bowling Night.'],
+  ['day3.small', 'День 3 · 09 грудня', 'Мітка', 'СПІЛЬНА ДІЯ'],
+  ['day3.name', 'День 3 · 09 грудня', 'Назва дня', 'Коріння і крила'],
+  ['day3.tag', 'День 3 · 09 грудня', 'Підзаголовок', 'Історія руху, органайзинг на практиці та екскурсія на екоферму'],
+  ['day3.note', 'День 3 · 09 грудня', 'Рядок внизу картки (головна)', 'Від кейсів — до гір і фінальної ночі.'],
+  ['day3.sub', 'День 3 · 09 грудня', 'Опис дня (сторінка «Програма»)', 'Навчання, екскурсія, підсумки та фінальний вечір.'],
+  ['day4.small', 'День 4 · 10 грудня', 'Мітка', 'ДОРОГА ДОДОМУ'],
+  ['day4.name', 'День 4 · 10 грудня', 'Назва дня', 'До зустрічі!'],
+  ['day4.tag', 'День 4 · 10 грудня', 'Підзаголовок', 'Виселяємось, підйомник і дорога додому'],
+  ['day4.note', 'День 4 · 10 грудня', 'Рядок внизу картки (головна)', 'Останній погляд на Карпати з висоти — і вирушаємо додому.'],
+  ['day4.sub', 'День 4 · 10 грудня', 'Опис дня (сторінка «Програма»)', 'Виселення, підйомники та повернення додому.'],
+  ['home.postersTitle', 'Головна · інші блоки', 'Афіші — заголовок', 'Афіші подій.'],
+  ['home.postersLead', 'Головна · інші блоки', 'Афіші — текст', 'Досліджуй теми, формати та спікерів.'],
+  ['home.uniKicker', 'Головна · інші блоки', 'Юніончик — надпис', 'ПОМІЧНИК ФОРУМУ · ТІЛЬКИ ТУТ'],
+  ['home.uniTitle1', 'Головна · інші блоки', 'Юніончик — заголовок, рядок 1', 'Запитай форум.'],
+  ['home.uniTitle2', 'Головна · інші блоки', 'Юніончик — заголовок, рядок 2', 'Юніончик відповість.'],
+  ['home.uniLead', 'Головна · інші блоки', 'Юніончик — текст', 'Юніончик знає всю програму, оголошення, доїзд і спікерів — і нічого не вигадує. Якщо чогось ще не підтверджено, так і скаже, а складне питання передасть організаторам.', 'text'],
+  ['home.uniBtn', 'Головна · інші блоки', 'Юніончик — кнопка', 'Запитати Юніончика'],
+  ['home.speakersTitle', 'Головна · інші блоки', 'Спікери — заголовок', 'Спікери.'],
+  ['home.speakersLead', 'Головна · інші блоки', 'Спікери — текст (порожньо — не показувати)', ''],
+  ['home.galleryTitle', 'Головна · інші блоки', 'Фотоархів — заголовок', 'Фотоархів.'],
+  ['home.updTitle', 'Головна · інші блоки', 'Плашка оголошень — заголовок', 'Оголошення організаторів.'],
+  ['home.updText', 'Головна · інші блоки', 'Плашка оголошень — текст', 'Оперативні зміни програми, повідомлення організаторів і push на телефон за твоєю згодою.', 'text'],
+  ['home.tgTitle', 'Головна · інші блоки', 'Плашка Telegram — заголовок', 'Telegram-канал форуму.'],
+  ['home.tgText', 'Головна · інші блоки', 'Плашка Telegram — текст', 'Новини, фото й спілкування учасників в одному каналі.'],
+  ['home.tgSoon', 'Головна · інші блоки', 'Плашка Telegram — поки немає посилання', 'Канал готується — посилання з’явиться тут.'],
+  ['home.sponsorsTitle', 'Головна · інші блоки', 'Спонсори — заголовок', 'Спонсори та партнери.'],
+  ['page.program.k', 'Заголовки сторінок', 'Програма — надпис', '07–10 ГРУДНЯ'],
+  ['page.program.t', 'Заголовки сторінок', 'Програма — заголовок', 'Програма'],
+  ['page.program.l', 'Заголовки сторінок', 'Програма — текст', 'Одна програма для всіх. На паралельні сесії записуйтесь у «Мій форум».'],
+  ['page.travel.k', 'Заголовки сторінок', 'Доїзд — надпис', 'ЛОГІСТИКА'],
+  ['page.travel.t', 'Заголовки сторінок', 'Доїзд — заголовок', 'Твій Плай.'],
+  ['page.travel.l', 'Заголовки сторінок', 'Доїзд — текст', 'Як учасники добираються до «Плаю» і де що знаходиться за програмою.'],
+  ['page.info.k', 'Заголовки сторінок', 'Корисне — надпис', 'ДЛЯ УЧАСНИКІВ'],
+  ['page.info.t', 'Заголовки сторінок', 'Корисне — заголовок', 'Корисне.'],
+  ['page.info.l', 'Заголовки сторінок', 'Корисне — текст', 'Практична інформація, сповіщення, фото та зв’язок з організаторами.'],
+  ['page.updates.k', 'Заголовки сторінок', 'Оголошення — надпис', 'ЗВ’ЯЗОК З ОРГАНІЗАТОРАМИ'],
+  ['page.updates.t', 'Заголовки сторінок', 'Оголошення — заголовок', 'Оголошення.'],
+  ['page.updates.l', 'Заголовки сторінок', 'Оголошення — текст', 'Зміни програми, організаційні деталі та важливі повідомлення — в одному місці.'],
+  ['page.me.k', 'Заголовки сторінок', 'Мій форум — надпис', 'ОСОБИСТЕ'],
+  ['page.me.t', 'Заголовки сторінок', 'Мій форум — заголовок (до входу)', 'Мій форум.'],
+  ['page.me.l', 'Заголовки сторінок', 'Мій форум — текст (до входу)', 'Ваш стіл, ваші сесії, ваша група доїзду й особистий розклад — за персональним кодом від організаторів.'],
+  ['page.me.l2', 'Заголовки сторінок', 'Мій форум — текст (після входу)', 'Це ваш персональний форум: сесії, місце на Unionize, група доїзду й розклад по днях.'],
+  ['page.more.t', 'Заголовки сторінок', 'Меню «Ще» — заголовок', 'Ще.'],
+  ['page.more.l', 'Заголовки сторінок', 'Меню «Ще» — текст', 'Усі розділи форуму.'],
+  ['travel.locTitle', 'Сторінка «Доїзд»', 'Локація — заголовок', 'Гірськолижний комплекс «Плай»'],
+  ['travel.locText', 'Сторінка «Доїзд»', 'Локація — текст', 'с. Плав’я, Львівська область. На офіційному сайті комплексу є інтерактивна карта території.', 'text'],
+  ['travel.routesTitle', 'Сторінка «Доїзд»', 'Групи доїзду — заголовок', 'Три шляхи до «Плаю».'],
+  ['travel.back', 'Сторінка «Доїзд»', 'Повернення — по рядку: дата | текст', '10 грудня · 15:00 | Виїзд автобусом з «Плаю» до Одеси (після обіду 14:00–15:00).\n11 грудня · 05:00 | Орієнтовне прибуття до Одеси.\n11 грудня | Учасники з Ізмаїла: автобус Одеса → Ізмаїл (час уточнюється).', 'list'],
+  ['travel.placesTitle', 'Сторінка «Доїзд»', 'Основні місця — заголовок', 'Основні місця.'],
+  ['travel.places', 'Сторінка «Доїзд»', 'Основні місця — по рядку: назва | опис', 'Велика зала | Відкриття, Unionize та загальні сесії.\nМала зала | Паралельні тренінги.\nРесторан | Основні прийоми їжі.\nБоулінг | Bowling Night 8 грудня.\nРецепція / готель | Прибуття й поселення до 16:00, реєстрація 7 грудня о 17:00, виселення 10 грудня о 09:00.\nЕкоферма «Плай» | Екскурсія 9 грудня, 14:30–17:30.\nРесторан «Карпатська ружа» | Вечеря для запрошених гостей 9 грудня.', 'list'],
+  ['travel.safety', 'Сторінка «Доїзд»', 'Плашка безпеки (порожньо — не показувати)', 'Маршрути та безпека: не використовуйте цю сторінку як схему евакуації або укриттів. Вказівки на випадок тривоги повідомлятимуть лише після підтвердження з організаторами й адміністрацією комплексу.', 'text'],
+  ['info.transfer', 'Сторінка «Корисне»', 'Трансфер — по рядку: дата | текст', '06 грудня · 10:00 | Учасники з Ізмаїла: автобус від залізничного вокзалу до Одеси. Учасники з Ізмаїла та Києва — готель Leomare.\n06 грудня · 22:30 | Спільний автобус Одеса → «Плай», збір — Гагарін Плаза.\n10 грудня · 15:00 | Виїзд автобусом з «Плаю» до Одеси.\n11 грудня · 05:00 | Орієнтовний час прибуття до Одеси.', 'list'],
+  ['info.help', 'Сторінка «Корисне»', 'Допомога — коли контакт координатора не вказано', 'Контакт координатора з’явиться тут найближчим часом.'],
+  ['info.warn', 'Сторінка «Корисне»', 'Плашка «Важливо» (порожньо — не показувати)', 'Інформація щодо укриття, екстрених контактів і порядку дій під час тривоги буде додана тільки після офіційного підтвердження.', 'text'],
+  ['info.faq', 'Сторінка «Корисне»', 'FAQ — по рядку: питання | відповідь | посилання | текст посилання', 'Де й коли проходить форум? | 7–10 грудня 2026 року, ГК «Плай», с. Плав’я, Львівська область. | #/travel | Локації\nЯк записатися на паралельну сесію? | Увійдіть у «Мій форум» за персональним кодом від організаторів і оберіть сесію. У кожній 25 місць, тож краще записатися швидше. | #/me | Мій форум\nДе моє місце на Unionize? | Після входу в «Мій форум» ви бачите свій стіл, місце й сусідів на схемі залу. | #/event/088 | Unionize\nДе перевіряти зміни програми? | Оперативні повідомлення публікуються в оголошеннях. | #/updates | Оголошення\nНе знайшов відповіді? | Запитай Юніончика. Якщо він не знає точної відповіді, питання піде організаторам, а відповідь прийде сюди ж. | #/ask | Запитати', 'list'],
+  ['ask.kicker', 'Юніончик', 'Надпис над заголовком', 'ПОМІЧНИК ФОРУМУ · ЮНІОНЧИК'],
+  ['ask.title', 'Юніончик', 'Заголовок', 'Запитай форум.'],
+  ['ask.lead', 'Юніончик', 'Текст під заголовком', 'Юніончик відповідає лише з програми, оголошень і відповідей організаторів. Якщо він не знає точно — передасть питання організаторам, і відповідь прийде сюди.', 'text'],
+  ['ask.placeholder', 'Юніончик', 'Підказка в полі вводу', 'Наприклад: коли виїзд з Ізмаїла?'],
+  ['ask.fine', 'Юніончик', 'Дрібний текст під полем', 'Юніончик може помилятися — перевіряй важливе в «Оголошеннях». Не вводь особисті дані.'],
+  ['ask.suggestions', 'Юніончик', 'Кнопки-підказки — по одній на рядок', 'Що відбувається зараз?\nЯк записатися на паралельну сесію?\nДе моє місце на Unionize?\nКоли Bowling Night?\nЯк доїхати з Ізмаїла?\nХто ведучі столів Unionize?', 'list'],
+  ['uni.tips', 'Юніончик', 'Що Юніончик каже в бульбашці — по одній фразі на рядок', 'Спитай, що зараз відбувається\nЗнаю, де твій стіл на Unionize\nПідкажу, коли автобус\nРозкажу про будь-якого спікера\nНе знаю відповіді — спитаю організаторів\nСпитай про паралельні тренінги', 'list'],
+  ['foot.org', 'Футер (низ кожної сторінки)', 'Перший рядок', 'MTWTU Youth Forum 2026 · Молодіжна рада ПРМТУ'],
+  ['foot.place', 'Футер (низ кожної сторінки)', 'Другий рядок', 'ГК «Плай» · 07–10.12.2026'],
+  ['foot.note', 'Футер (низ кожної сторінки)', 'Додатковий рядок (порожньо — не показувати)', '', 'text']
 ];
+const TXD = Object.fromEntries(TX.map(x => [x[0], x[3]]));
+const T = k => { const v = S.data?.texts?.[k]; return typeof v === 'string' ? v : (TXD[k] ?? ''); };
+const TL = k => T(k).split('\n').map(x => x.trim()).filter(Boolean);
+const TP = k => TL(k).map(x => x.split('|').map(y => y.trim()));
 const HIGHLIGHTS = ['082', '085', '086', '088', '08d', '093', '095', '097', '09a'];
-const PLACES = [
-  ['Велика зала', 'Відкриття, Unionize та загальні сесії.'],
-  ['Мала зала', 'Паралельні тренінги.'],
-  ['Ресторан', 'Основні прийоми їжі.'],
-  ['Боулінг', 'Bowling Night 8 грудня.'],
-  ['Рецепція / готель', 'Прибуття й поселення до 16:00, реєстрація 7 грудня о 17:00, виселення 10 грудня о 09:00.'],
-  ['Екоферма «Плай»', 'Екскурсія 9 грудня, 14:30–17:30.'],
-  ['Ресторан «Карпатська ружа»', 'Вечеря для запрошених гостей 9 грудня.']
-];
-const CITIES = [
-  { name: 'Одеса', note: 'Спільний автобус до «Плаю» 6 грудня о 22:30, збір — Гагарін Плаза.', bus: true },
-  { name: 'Львів', note: 'Орієнтир для самостійної поїздки. Організований трансфер із цього міста не підтверджено.' },
-  { name: 'Київ', note: 'Орієнтир для самостійної поїздки. Організований трансфер із цього міста не підтверджено.' }
-];
 const GALLERY = ['forum.jpg', 'FIL_1376.jpg', 'img-77.jpg'].map(f => 'https://raw.githubusercontent.com/Suhrobss/MY/main/images/' + f);
 const PEOPLE_ROLES = { 'Олег Григорюк': 'Голова ПРМТУ' };
-const SUGGESTIONS = ['Що відбувається зараз?', 'Як записатися на паралельну сесію?', 'Де моє місце на Unionize?', 'Коли Bowling Night?', 'Як доїхати з Ізмаїла?', 'Хто ведучі столів Unionize?'];
 
 /* ============ helpers ============ */
 const $ = (s, r = document) => r.querySelector(s);
@@ -111,6 +188,7 @@ const mins = t => { if (!t) return null; const [h, m] = t.split(':').map(Number)
 const endMins = e => { const s = mins(e.start), en = mins(e.end); return en == null ? null : (s != null && en < s ? en + 1440 : en); };
 const formatRange = e => e.start && e.end ? `${e.start}–${e.end}${e.end < e.start ? ' (+1 день)' : ''}` : e.start ? `з ${e.start}` : e.end ? `до ${e.end}` : 'Час уточнюється';
 const statusLabel = s => s === 'confirmed' ? 'Підтверджено' : s === 'canceled' ? 'Скасовано' : 'Попередньо';
+const statusBadge = s => s === 'canceled' ? `<span class="status s-canceled">Скасовано</span>` : '';
 const sortKey = e => e.seq ?? mins(e.start) ?? -1;
 const sortEv = list => [...list].sort((a, b) => a.date.localeCompare(b.date) || sortKey(a) - sortKey(b) || a.id.localeCompare(b.id));
 const chapterOf = d => CHAPTERS.find(c => (CHAPTER_DAYS[c.id] || [c.id]).includes(d)) || CHAPTERS[0];
@@ -208,7 +286,7 @@ function marks() {
 function liveState() {
   const { day, time } = kyivParts();
   const now = mins(time);
-  const list = sortEv(events().filter(e => e.status !== 'canceled'));
+  const list = sortEv(events().filter(e => e.status !== 'canceled' && (e.group ? S.me?.group === e.group : true)));
   let current = null, next = null;
   for (const e of list) {
     const s = mins(e.start), en = endMins(e);
@@ -224,10 +302,11 @@ function countdown() {
   return { d, h, m, s, done: diff === 0 };
 }
 const pad = n => String(n).padStart(2, '0');
+const daysWord = n => { const a = n % 10, b = n % 100; return a === 1 && b !== 11 ? 'ДЕНЬ' : a >= 2 && a <= 4 && (b < 12 || b > 14) ? 'ДНІ' : 'ДНІВ'; };
 
 /* ============ shared fragments ============ */
 function preview() {
-  return S.data?.mode === 'preview' ? `<p class="note-line">${ic('info')} Робочий макет · інформація з попередньої програми уточнюється</p>` : '';
+  return '';
 }
 function offlineBar() {
   return S.offline ? `<div class="bar bar-warn">${ic('wifi')}<span><b>Немає з’єднання</b> · показано останню збережену версію</span><button class="link" data-act="reload">Оновити</button></div>` : '';
@@ -247,7 +326,7 @@ function poster(e, variant = '') {
       <div class="poster-meta">${trailShape(ch.trail, 10)}<span>${esc(formatRange(e))}</span><span>${esc(e.venue || 'Локація уточнюється')}</span></div>
       <h3>${esc(e.title)}</h3>
       <p>${esc(e.posterTitle || e.teaser || e.details || 'Подробиці готуються.')}</p>
-      <div class="poster-foot"><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span>${saveBtn(e)}</div>
+      ${e.status === 'canceled' ? `<div class="poster-foot">${statusBadge(e.status)}</div>` : ''}
     </div>
   </article>`;
 }
@@ -270,15 +349,15 @@ function footer() {
   return `<footer class="foot wrap">
     <div class="foot-big" aria-hidden="true">ПЛАЙ<span>’26</span></div>
     <div class="foot-row">
-      <span>MTWTU Youth Forum 2026 · Молодіжна рада ПРМТУ</span>
-      <span>ГК «Плай» · 07–10.12.2026</span>
+      <span>${esc(T('foot.org'))}</span>
+      <span>${esc(T('foot.place'))}</span>
       <a href="#/admin">Організаторам</a>
     </div>
-    <p class="foot-made">${uni('uni-xs')} Помічник Юніончик працює на Claude від Anthropic. Сайт спроєктовано та написано разом із Claude.</p>
+    ${T('foot.note') ? `<p class="foot-made">${esc(T('foot.note'))}</p>` : ''}
   </footer>`;
 }
 function pageHead(kicker, title, lead, extra = '') {
-  return `<header class="phead wrap"><span class="kicker">${esc(kicker)}</span><h1>${title}</h1><p class="lead">${esc(lead)}</p>${extra}</header>`;
+  return `<header class="phead wrap"><span class="kicker">${esc(kicker)}</span><h1>${title}</h1>${lead ? `<p class="lead">${esc(lead)}</p>` : ''}${extra}</header>`;
 }
 
 /* ============ views ============ */
@@ -294,14 +373,13 @@ function viewHome() {
     <canvas class="topo" aria-hidden="true"></canvas>
     <div class="hero-grid wrap">
       <div class="hero-title">
-        <p class="kicker"><span class="live-dot"></span> MTWTU YOUTH FORUM 2026 · Карпати</p>
-        <h1 class="mega">Молодь<br><span class="mega-outline">збирається.</span></h1>
+        <p class="kicker"><span class="live-dot"></span> ${esc(T('home.kicker'))}</p>
+        <h1 class="mega">${esc(T('home.title1')).replace(/ ([—–-])/g, '&nbsp;$1')}<br><span class="mega-outline">${esc(T('home.title2'))}</span></h1>
       </div>
       <div class="hero-copy">
-        <p class="hero-lead">Чотири дні у Плаї: дискусії, практичні лаби, Unionize, гори й фінальна ніч. Знайди свій стіл, запишись на сесії й тримай увесь форум у кишені — у «Мій форум».</p>
+        ${T('home.lead') ? `<p class="hero-lead">${esc(T('home.lead'))}</p>` : ''}
         <div class="hero-cta">
-          <a class="btn btn-lift" href="#/program">Програма 7–10 грудня ${ic('arrow')}</a>
-          <button class="btn btn-ghost" data-act="film">${ic('play')} Відео форуму</button>
+          <a class="btn btn-lift" href="#/program">${esc(T('home.cta'))} ${ic('arrow')}</a>
           <a class="btn btn-ghost" href="#/me">${ic('star')} ${S.me ? 'Мій форум' : 'Увійти за кодом'}</a>
         </div>
         <dl class="cd" aria-label="До початку форуму" ${cd.done ? 'hidden' : ''}>
@@ -330,9 +408,9 @@ function viewHome() {
       </div>
     </div>
     <div class="hero-meta wrap">
-      <span>${L.before ? `ДО ФОРУМУ · ${Math.ceil((FORUM_START - Date.now()) / 864e5)} ДН.` : L.after ? 'ПІДСУМКИ ФОРУМУ' : `ДЕНЬ ФОРУМУ · ${L.day.slice(8)} ГРУДНЯ`}</span>
+      <span>${L.before ? `ДО ФОРУМУ · <span data-cd="d">${pad(cd.d)}</span> ${daysWord(cd.d)}` : L.after ? 'ПІДСУМКИ ФОРУМУ' : `ДЕНЬ ФОРУМУ · ${L.day.slice(8)} ГРУДНЯ`}</span>
       <span>07—10.12.2026 / ГК «ПЛАЙ»</span>
-      <span class="hide-sm">${S.data.settings?.participantsLabel ? esc(S.data.settings.participantsLabel) + ' · ' : ''}Плав’я · Львівська обл.</span>
+      <span class="hide-sm">${S.data.settings?.participantsLabel ? esc(S.data.settings.participantsLabel) + ' · ' : ''}${esc(T('home.place'))}</span>
     </div>
   </section>
 
@@ -342,7 +420,7 @@ function viewHome() {
 
   ${live ? `<section class="wrap">
     <a class="nownext" href="#/event/${esc(live.id)}">
-      <span class="nn-kicker"><span class="live-dot"></span>${L.current ? 'ЗАРАЗ ВІДБУВАЄТЬСЯ' : L.before ? 'НАБЛИЖАЄТЬСЯ ФОРУМ · ПЕРША ПОДІЯ' : 'НАСТУПНА ПОДІЯ'}</span>
+      <span class="nn-kicker"><span class="live-dot"></span>${L.current ? 'ЗАРАЗ' : 'ДАЛІ'}</span>
       <span class="nn-title">${esc(live.title)}</span>
       <span class="nn-meta">${esc(live.date.slice(8))}.12 · ${esc(formatRange(live))} · ${esc(live.venue || 'Локація уточнюється')}</span>
       <span class="nn-go">Про подію ${ic('arrow')}</span>
@@ -350,7 +428,7 @@ function viewHome() {
   </section>` : ''}
 
   <section class="wrap sec">
-    <div class="sec-head"><span class="kicker">07—10 ГРУДНЯ</span><h2>Чотири глави<br><em>форуму.</em></h2><p>Кожен день — інший ритм, нові люди й нові історії. Обери главу та відкрий її події.</p></div>
+    <div class="sec-head"><span class="kicker">${esc(T('home.daysKicker'))}</span><h2>${esc(T('home.daysTitle1'))}<br><em>${esc(T('home.daysTitle2'))}</em></h2>${T('home.daysLead') ? `<p>${esc(T('home.daysLead'))}</p>` : ''}</div>
     <div class="chapters">${CHAPTERS.map(c => `
       <a class="chapter t-${c.trail}" href="#/program/${c.id}">
         <span class="ch-top"><span>${c.idx} / 04</span>${trailShape(c.trail, 16)}</span>
@@ -358,14 +436,14 @@ function viewHome() {
         <span class="ch-small">${esc(c.small)}</span>
         <span class="ch-name">${esc(c.name)}</span>
         <span class="ch-tag">${esc(c.tag)}</span>
-        <span class="ch-trail">${esc(c.trailName)} — ${esc(c.trailNote)}</span>
+        <span class="ch-trail">${esc(c.note)}</span>
         <span class="ch-arrow" aria-hidden="true">↗</span>
       </a>`).join('')}
     </div>
   </section>
 
   <section class="wrap sec">
-    <div class="sec-head row"><div><span class="kicker">ПРОГРАМА</span><h2>Афіші подій.</h2><p>Досліджуй теми, формати та спікерів. Деякі деталі ще погоджуються.</p></div><a class="btn btn-ghost" href="#/program">Усі події ${ic('arrow')}</a></div>
+    <div class="sec-head row"><div><span class="kicker">ПРОГРАМА</span><h2>${esc(T('home.postersTitle'))}</h2>${T('home.postersLead') ? `<p>${esc(T('home.postersLead'))}</p>` : ''}</div><a class="btn btn-ghost" href="#/program">Усі події ${ic('arrow')}</a></div>
     <div class="posters">${featured.map((e, i) => poster(e, i === 0 ? 'poster-xl' : '')).join('')}</div>
   </section>
 
@@ -373,27 +451,27 @@ function viewHome() {
     <div class="wrap claude-grid">
       <div>
         <a class="uni-hero" href="#/ask" aria-label="Поговорити з Юніончиком">${uni('uni-lg', true)}<span class="uni-say" data-uni-say>${uniGreeting()}</span></a>
-        <span class="kicker kicker-inv">ПОМІЧНИК ФОРУМУ · ТІЛЬКИ ТУТ</span>
-        <h2>Запитай форум.<br><em>Юніончик відповість.</em></h2>
-        <p>Юніончик знає всю програму, оголошення, доїзд і спікерів — і нічого не вигадує. Якщо чогось ще не підтверджено, так і скаже, а складне питання передасть організаторам.</p>
-        <a class="btn btn-lift" href="#/ask">Запитати Юніончика ${ic('arrow')}</a>
+        <span class="kicker kicker-inv">${esc(T('home.uniKicker'))}</span>
+        <h2>${esc(T('home.uniTitle1'))}<br><em>${esc(T('home.uniTitle2'))}</em></h2>
+        ${T('home.uniLead') ? `<p>${esc(T('home.uniLead'))}</p>` : ''}
+        <a class="btn btn-lift" href="#/ask">${esc(T('home.uniBtn'))} ${ic('arrow')}</a>
       </div>
       <div class="claude-demo" aria-hidden="true">
         <div class="bubble me">Що в мене 8 грудня о 12:00?</div>
         <div class="bubble ai">${uni('uni-sm')}<span>О 12:00 — дві паралельні сесії: тренінги <b>«Медіація»</b> (Мала зала) і <b>«CV»</b> (Велика зала), до 25 учасників у кожному. Записатися можна в «Мій форум».</span></div>
-        <div class="chips">${SUGGESTIONS.slice(0, 3).map(s => `<span>${esc(s)}</span>`).join('')}</div>
+        <div class="chips">${TL('ask.suggestions').slice(0, 3).map(s => `<span>${esc(s)}</span>`).join('')}</div>
       </div>
     </div>
   </section>
 
   <section class="wrap sec" id="speakers">
-    <div class="sec-head"><span class="kicker">ЛЮДИ</span><h2>Спікери.</h2><p>Участь за попередньою програмою.</p></div>
+    <div class="sec-head"><span class="kicker">ЛЮДИ</span><h2>${esc(T('home.speakersTitle'))}</h2>${T('home.speakersLead') ? `<p>${esc(T('home.speakersLead'))}</p>` : ''}</div>
     <div class="people">${people.map(personCard).join('') || '<p>Склад спікерів уточнюється.</p>'}
     </div>
   </section>
 
   <section class="wrap sec">
-    <div class="sec-head row"><div><span class="kicker">АРХІВ</span><h2>Фотоархів.</h2></div>
+    <div class="sec-head row"><div><span class="kicker">АРХІВ</span><h2>${esc(T('home.galleryTitle'))}</h2></div>
       <div class="gal-nav"><button class="icon-btn" data-gal="-1" aria-label="Попереднє фото">←</button><button class="icon-btn" data-gal="1" aria-label="Наступне фото">→</button></div></div>
     ${S.data.settings?.driveUrl ? `<p><a class="btn btn-ghost" href="${esc(S.data.settings.driveUrl)}" target="_blank" rel="noopener noreferrer">Усі фото форуму ${ic('ext')}</a></p>` : ''}
     <div class="gallery">${GALLERY.map((src, i) => `<figure><a href="${src}" target="_blank" rel="noopener noreferrer"><img loading="lazy" src="${src}" alt="Архівне фото Молодіжної ради ${i + 1}"></a><figcaption>${pad(i + 1)} / ${pad(GALLERY.length)}</figcaption></figure>`).join('')}</div>
@@ -401,18 +479,18 @@ function viewHome() {
 
   <section class="wrap sec split">
     <a class="tile tile-ink" href="#/updates">
-      <span class="kicker kicker-inv">${ic('bell')} ЗВ’ЯЗОК</span><h3>Оголошення організаторів.</h3>
-      <p>Оперативні зміни програми, повідомлення організаторів і push на телефон за твоєю згодою.</p>
+      <span class="kicker kicker-inv">${ic('bell')} ЗВ’ЯЗОК</span><h3>${esc(T('home.updTitle'))}</h3>
+      <p>${esc(T('home.updText'))}</p>
       <span class="link">Оголошення ${ic('arrow')}</span>
     </a>
     <a class="tile" href="${esc(S.data.settings?.telegramUrl || '#/info')}" ${S.data.settings?.telegramUrl ? 'target="_blank" rel="noopener noreferrer"' : ''}>
-      <span class="kicker">${ic('users')} ЖИВЕ СПІЛКУВАННЯ</span><h3>Telegram-канал форуму.</h3>
-      <p>${S.data.settings?.telegramUrl ? 'Новини, фото й спілкування учасників в одному каналі.' : 'Канал готується — посилання з’явиться тут.'}</p>
+      <span class="kicker">${ic('users')} ЖИВЕ СПІЛКУВАННЯ</span><h3>${esc(T('home.tgTitle'))}</h3>
+      <p>${esc(S.data.settings?.telegramUrl ? T('home.tgText') : T('home.tgSoon'))}</p>
       <span class="link">${S.data.settings?.telegramUrl ? 'Відкрити' : 'Корисне'} ${ic('arrow')}</span>
     </a>
   </section>
   <section class="wrap sec" id="sponsors">
-    <div class="sec-head"><span class="kicker">ПІДТРИМКА</span><h2>Спонсори та партнери.</h2></div>
+    <div class="sec-head"><span class="kicker">ПІДТРИМКА</span><h2>${esc(T('home.sponsorsTitle'))}</h2></div>
     ${sponsorsBlock()}
   </section>
   ${footer()}`;
@@ -465,7 +543,7 @@ function dayProfile(list, day) {
       ${nowX != null ? `<line class="pf-now" x1="${nowX}" x2="${nowX}" y1="-10" y2="${H}"/>` : ''}
     </svg>
     <div class="pf-labels">${peaks.map(p => `<a href="#/event/${esc(p.e.id)}" style="left:${(p.x / W * 100).toFixed(2)}%;top:${(((p.y + 10) / (H + 34)) * 100).toFixed(2)}%">${esc(p.e.category || p.e.title)}</a>`).join('')}</div>
-    <figcaption>Профіль дня — висота піку відповідає вазі події</figcaption>
+    <figcaption>Профіль дня</figcaption>
   </figure>`;
 }
 
@@ -538,7 +616,7 @@ function viewProgram(day) {
     </section>`;
   }).join('');
   return `
-  ${pageHead('07–10 ГРУДНЯ', 'Програма', 'Одна програма для всіх. На паралельні сесії записуйтесь у «Мій форум».')}
+  ${pageHead(T('page.program.k'), esc(T('page.program.t')), T('page.program.l'))}
   <div class="wrap">${preview()}${offlineBar()}</div>
   <div class="wrap days" role="tablist" aria-label="Дні форуму">${CHAPTERS.map(c => `
     <a role="tab" aria-selected="${c.id === day}" class="day t-${c.trail} ${c.id === day ? 'on' : ''}" href="#/program/${c.id}">
@@ -546,7 +624,7 @@ function viewProgram(day) {
     </a>`).join('')}
   </div>
   <div class="wrap"><section class="chapter-band t-${ch.trail}">
-    <div><span class="kicker">ГЛАВА ${ch.idx} / ${esc(ch.small)} · ${esc(ch.trailName).toUpperCase()}</span><h2>${esc(ch.name)}</h2><p>${esc(ch.sub)}</p></div>
+    <div><span class="kicker">ДЕНЬ ${ch.idx} / ${esc(ch.small)} · ${esc(ch.trailName).toUpperCase()}</span><h2>${esc(ch.name)}</h2><p>${esc(ch.sub)}</p></div>
     <strong aria-hidden="true">${day.slice(8)}</strong>
   </section></div>
   <div class="wrap">${dayProfile(all.filter(e => e.date === day), day)}</div>
@@ -600,7 +678,7 @@ function viewEvent(id) {
         <div><dt>Місце</dt><dd>${esc(e.venue || 'Уточнюється')}</dd></div>
         <div><dt>Статус</dt><dd><span class="status s-${esc(e.status)}">${statusLabel(e.status)}</span></dd></div>
         ${e.track === 'parallel' ? `<div><dt>Формат</dt><dd>Паралельна сесія${e.capacity ? `, ${e.capacity} місць` : ''}</dd></div>` : ''}
-        ${e.speakerNames ? `<div><dt>Учасники / спікери (попередньо)</dt><dd>${esc(e.speakerNames)}</dd></div>` : ''}
+        ${e.speakerNames ? `<div><dt>Учасники / спікери</dt><dd>${esc(e.speakerNames)}</dd></div>` : ''}
       </dl>
       <div class="facts-act">
         ${e.link ? `<a class="btn btn-lift full" href="${esc(e.link)}" target="_blank" rel="noopener noreferrer">${ic('ext')} Про локацію на сайті «Плаю»</a>` : ''}
@@ -613,6 +691,7 @@ function viewEvent(id) {
   ${footer()}`;
 }
 
+function legs(k) { return TP(k).map(([d, t = '']) => `<li><b>${esc(d)}</b><span>${esc(t)}</span></li>`).join(''); }
 function routeStops(t) { return String(t.title || '').split('→').map(s => s.trim()).filter(Boolean); }
 function transportCard(t) {
   const mine = S.me?.group === t.key;
@@ -628,14 +707,14 @@ function transportCard(t) {
 }
 function viewTravel() {
   return `
-  ${pageHead('ЛОГІСТИКА', 'Твій Плай.', 'Як учасники добираються до «Плаю» і де що знаходиться за програмою.')}
+  ${pageHead(T('page.travel.k'), esc(T('page.travel.t')), T('page.travel.l'))}
   <div class="wrap">${preview()}</div>
   <section class="wrap sec">
     <div class="loc">
       <div class="loc-copy">
         <span class="kicker kicker-inv">OFFICIAL LOCATION</span>
-        <h2>Гірськолижний комплекс «Плай»</h2>
-        <p>с. Плав’я, Львівська область. На офіційному сайті комплексу є інтерактивна карта території.</p>
+        <h2>${esc(T('travel.locTitle'))}</h2>
+        <p>${esc(T('travel.locText'))}</p>
         <a class="btn btn-lift" href="https://play-karpaty.com/" target="_blank" rel="noopener noreferrer">Перейти на сайт комплексу ${ic('ext')}</a>
       </div>
       <svg class="loc-art" viewBox="0 0 400 260" aria-hidden="true">
@@ -647,18 +726,14 @@ function viewTravel() {
     </div>
   </section>
   <section class="wrap sec">
-    <div class="sec-head"><span class="kicker">ЯК ДІСТАТИСЯ</span><h2>Три шляхи до «Плаю».</h2><p>${S.me ? 'Вашу групу виділено.' : 'Свою групу доїзду бачитимете в «Мій форум».'}</p></div>
+    <div class="sec-head"><span class="kicker">ЯК ДІСТАТИСЯ</span><h2>${esc(T('travel.routesTitle'))}</h2><p>${S.me ? 'Вашу групу виділено.' : 'Свою групу доїзду бачитимете в «Мій форум».'}</p></div>
     <div class="routes">${(S.data.transport || []).map(transportCard).join('')}</div>
-    <div class="tile" style="margin-top:14px"><span class="kicker">${ic('clock')} ПОВЕРНЕННЯ</span><ol class="legs">
-      <li><b>10 грудня · 15:00</b><span>Виїзд автобусом з «Плаю» до Одеси (після обіду 14:00–15:00).</span></li>
-      <li><b>11 грудня · 05:00</b><span>Орієнтовне прибуття до Одеси.</span></li>
-      <li><b>11 грудня</b><span>Учасники з Ізмаїла: автобус Одеса → Ізмаїл (час уточнюється).</span></li>
-    </ol></div>
+    <div class="tile" style="margin-top:14px"><span class="kicker">${ic('clock')} ПОВЕРНЕННЯ</span><ol class="legs">${legs('travel.back')}</ol></div>
   </section>
   <section class="wrap sec">
-    <div class="sec-head"><span class="kicker">ЗА ПРОГРАМОЮ</span><h2>Основні місця.</h2></div>
-    <div class="places">${PLACES.map(([n, d], i) => `<article class="place"><span class="place-n">${pad(i + 1)}</span><div><strong>${esc(n)}</strong><p>${esc(d)}</p></div>${ic('pin')}</article>`).join('')}</div>
-    <div class="bar bar-warn" style="margin-top:20px">${ic('alert')}<span><b>Маршрути та безпека:</b> не використовуйте цю сторінку як схему евакуації або укриттів. Вказівки на випадок тривоги повідомлятимуть лише після підтвердження з організаторами й адміністрацією комплексу.</span></div>
+    <div class="sec-head"><span class="kicker">ЗА ПРОГРАМОЮ</span><h2>${esc(T('travel.placesTitle'))}</h2></div>
+    <div class="places">${TP('travel.places').map(([n, d = ''], i) => `<article class="place"><span class="place-n">${pad(i + 1)}</span><div><strong>${esc(n)}</strong><p>${esc(d)}</p></div>${ic('pin')}</article>`).join('')}</div>
+    ${T('travel.safety') ? `<div class="bar bar-warn" style="margin-top:20px">${ic('alert')}<span>${esc(T('travel.safety'))}</span></div>` : ''}
   </section>
   ${footer()}`;
 }
@@ -670,7 +745,7 @@ function viewInfo() {
   const pushReady = support && S.data.webPushAvailable && !(ios && !standalone);
   const st = S.data.settings || {};
   return `
-  ${pageHead('ДЛЯ УЧАСНИКІВ', 'Корисне.', 'Практична інформація, сповіщення, фото та зв’язок з організаторами.')}
+  ${pageHead(T('page.info.k'), esc(T('page.info.t')), T('page.info.l'))}
   <div class="wrap">${preview()}</div>
   <div class="wrap bento">
     <article class="tile tile-ink b-push">
@@ -685,17 +760,12 @@ function viewInfo() {
     <article class="tile b-transfer">
       <span class="kicker">${ic('bus')} BEFORE YOU GO</span>
       <h3>Трансфер та від’їзд</h3>
-      <ol class="legs">
-        <li><b>06 грудня · 10:00</b><span>Учасники з Ізмаїла: автобус від залізничного вокзалу до Одеси. Учасники з Ізмаїла та Києва — готель Leomare.</span></li>
-        <li><b>06 грудня · 22:30</b><span>Спільний автобус Одеса → «Плай», збір — Гагарін Плаза.</span></li>
-        <li><b>10 грудня · 15:00</b><span>Виїзд автобусом з «Плаю» до Одеси.</span></li>
-        <li><b>11 грудня · 05:00</b><span>Попередній час прибуття до Одеси. Може змінитися.</span></li>
-      </ol>
+      <ol class="legs">${legs('info.transfer')}</ol>
       <a class="link" href="#/travel">Групи доїзду ${ic('arrow')}</a>
     </article>
     <article class="tile">
       <span class="kicker">${ic('info')} NEED HELP?</span><h3>Потрібна допомога?</h3>
-      ${st.coordinator ? `<p>${esc(st.coordinator)}</p>` : '<p>Контакт координатора з’явиться тут після погодження.</p><span class="tag">Контакт уточнюється</span>'}
+      ${st.coordinator ? `<p>${esc(st.coordinator)}</p>` : `<p>${esc(T('info.help'))}</p>`}
       <a class="link" href="#/ask">Або запитайте Юніончика — якщо він не знає, передасть питання організаторам ${ic('arrow')}</a>
     </article>
     <article class="tile">
@@ -707,18 +777,14 @@ function viewInfo() {
       <span class="kicker">${ic('download')} ФОТОГРАФІЇ</span><h3>Фото форуму</h3>
       ${st.driveUrl ? `<p>Усі фото з форуму в одній папці.</p><a class="btn btn-lift" href="${esc(st.driveUrl)}" target="_blank" rel="noopener noreferrer">Відкрити фото ${ic('ext')}</a>` : '<p>Посилання на фотоархів форуму з’явиться тут.</p><span class="tag">Після форуму</span>'}
     </article>
-    <article class="tile tile-warn b-wide">
+    ${T('info.warn') ? `<article class="tile tile-warn b-wide">
       <span class="kicker">${ic('alert')} ВАЖЛИВО</span>
-      <p>Інформація щодо укриття, екстрених контактів і порядку дій під час тривоги буде додана тільки після офіційного підтвердження.</p>
-    </article>
+      <p>${esc(T('info.warn'))}</p>
+    </article>` : ''}
   </div>
   <section class="wrap sec faq">
     <div class="sec-head"><span class="kicker">FAQ</span><h2>Поширені питання.</h2></div>
-    <details><summary>Де й коли проходить форум?</summary><p>7–10 грудня 2026 року, ГК «Плай», с. Плав’я, Львівська область.</p><a class="link" href="#/travel">Локації ${ic('arrow')}</a></details>
-    <details><summary>Як записатися на паралельну сесію?</summary><p>Увійдіть у «Мій форум» за персональним кодом від організаторів і оберіть сесію. У кожній 25 місць, тож краще записатися швидше.</p><a class="link" href="#/me">Мій форум ${ic('arrow')}</a></details>
-    <details><summary>Де моє місце на Unionize?</summary><p>Після входу в «Мій форум» ви бачите свій стіл, місце й сусідів на схемі залу.</p><a class="link" href="#/event/088">Unionize ${ic('arrow')}</a></details>
-    <details><summary>Де перевіряти зміни програми?</summary><p>Оперативні повідомлення публікуються в оголошеннях.</p><a class="link" href="#/updates">Оголошення ${ic('arrow')}</a></details>
-    <details><summary>Не знайшов відповіді?</summary><p>Запитай Юніончика. Якщо він не знає точної відповіді, питання піде організаторам, а відповідь прийде сюди ж.</p><a class="link" href="#/ask">Запитати ${ic('arrow')}</a></details>
+    ${TP('info.faq').map(([q, ans = '', href = '', lt = '']) => `<details><summary>${esc(q)}</summary><p>${esc(ans)}</p>${href && /^(#\/|https:\/\/)/.test(href) ? `<a class="link" href="${esc(href)}"${href.startsWith('https') ? ' target="_blank" rel="noopener noreferrer"' : ''}>${esc(lt || 'Детальніше')} ${ic('arrow')}</a>` : ''}</details>`).join('')}
   </section>
   ${footer()}`;
 }
@@ -727,7 +793,7 @@ function viewUpdates() {
   const notes = S.data.announcements || [];
   S.seen = notes[0]?.id || ''; store.set('plai:seen', S.seen);
   return `
-  ${pageHead('ЗВ’ЯЗОК З ОРГАНІЗАТОРАМИ', 'Оголошення.', 'Зміни програми, організаційні деталі та важливі повідомлення — в одному місці.')}
+  ${pageHead(T('page.updates.k'), esc(T('page.updates.t')), T('page.updates.l'))}
   <div class="wrap">${offlineBar()}</div>
   <section class="wrap">
     ${notes.length ? `<div class="feed">${notes.map(a => `
@@ -769,7 +835,7 @@ function myAgenda() {
 }
 function viewMe() {
   if (!S.me) return `
-  ${pageHead('ОСОБИСТЕ', 'Мій форум.', 'Ваш стіл, ваші сесії, ваша група доїзду й особистий розклад — за персональним кодом від організаторів.')}
+  ${pageHead(T('page.me.k'), esc(T('page.me.t')), T('page.me.l'))}
   <section class="wrap"><form class="tile login" id="code-form">
     <span class="kicker">${ic('lock')} ВХІД ЗА КОДОМ</span><h3>Введіть персональний код</h3>
     <p>Код виглядає як <b>PLAI-XXXX</b>. Ви отримаєте його від організаторів посиланням або QR-кодом на бейджі.</p>
@@ -782,7 +848,7 @@ function viewMe() {
   for (const e of sortEv(events())) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   const qs = me.questions || [];
   return `
-  ${pageHead('ОСОБИСТЕ', `Привіт, ${esc(me.name.split(' ')[0] || me.name)}.`, 'Це ваш персональний форум: сесії, місце на Unionize, група доїзду й розклад по днях.')}
+  ${pageHead(T('page.me.k'), `Привіт, ${esc(me.name.split(' ')[0] || me.name)}.`, T('page.me.l2'))}
   <div class="wrap me-grid">
     <article class="tile"><span class="kicker">${ic('bus')} ГРУПА ДОЇЗДУ</span><h3>${esc(me.transport?.title || 'Уточнюється')}</h3>
       <p>${esc(me.transport?.note || 'Організатори вкажуть вашу групу.')}</p><p class="meet"><b>Збір:</b> ${me.transport?.meet ? esc(me.transport.meet) : 'точка і час збору уточнюються'}</p></article>
@@ -808,7 +874,7 @@ function questionCard(q) {
 }
 function viewMore() {
   const items = [['#/me', 'star', 'Мій форум', S.me ? S.me.name : 'Вхід за персональним кодом'], ['#/updates', 'bell', 'Оголошення', 'Зміни й повідомлення організаторів'], ['#/travel', 'compass', 'Доїзд', 'Групи доїзду та основні місця'], ['#/info', 'info', 'Корисне', 'Трансфер, push, фото, FAQ'], ['#/admin', 'lock', 'Організаторам', 'Панель керування']];
-  return `${pageHead('МЕНЮ', 'Ще.', 'Усі розділи форуму.')}<nav class="wrap more">${items.map(([h, i, t, s]) => `<a href="${h}">${ic(i)}<span><b>${t}</b><small>${esc(s)}</small></span>${ic('arrow')}</a>`).join('')}<button class="more-theme" data-act="theme">Змінити тему (світла / темна)</button></nav>${footer()}`;
+  return `${pageHead('МЕНЮ', esc(T('page.more.t')), T('page.more.l'))}<nav class="wrap more">${items.map(([h, i, t, s]) => `<a href="${h}">${ic(i)}<span><b>${t}</b><small>${esc(s)}</small></span>${ic('arrow')}</a>`).join('')}<button class="more-theme" data-act="theme">Змінити тему (світла / темна)</button></nav>${footer()}`;
 }
 
 /* ============ Юніончик: чат ============ */
@@ -820,19 +886,19 @@ function viewAsk() {
   <section class="ask wrap">
     <header class="ask-head">
       <button class="ask-uni" type="button" data-act="uni-poke" aria-label="Юніончик">${uni('uni-lg' + (S.uni !== 'idle' ? ' is-' + S.uni : ''), true)}<span class="uni-say" data-uni-say>${S.uni === 'idle' ? uniGreeting() : UNI_SAY[S.uni]}</span></button>
-      <div><span class="kicker">ПОМІЧНИК ФОРУМУ · ЮНІОНЧИК</span><h1>Запитай форум.</h1>
-      <p>${ai ? 'Юніончик відповідає лише з програми, оголошень і відповідей організаторів. Якщо він не знає точно — передасть питання організаторам, і відповідь прийде сюди.' : 'Розумний режим ще не підключено — Юніончик шукає відповіді в програмі, а питання без відповіді передає організаторам.'}${S.me ? ' Юніончик бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p></div>
+      <div><span class="kicker">${esc(T('ask.kicker'))}</span><h1>${esc(T('ask.title'))}</h1>
+      ${T('ask.lead') || S.me ? `<p>${esc(T('ask.lead'))}${S.me ? ' Юніончик бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p>` : ''}</div>
     </header>
     ${open.length ? `<div class="feed">${open.map(questionCard).join('')}</div>` : ''}
     <div class="chat" id="chat" aria-live="polite">${S.chat.length ? S.chat.map(renderMsg).join('') : `
-      <div class="chat-empty"><p>Спробуй:</p><div class="chips">${SUGGESTIONS.map(s => `<button class="chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}
+      <div class="chat-empty"><p>Спробуй:</p><div class="chips">${TL('ask.suggestions').map(s => `<button class="chip" data-suggest="${esc(s)}">${esc(s)}</button>`).join('')}</div></div>`}
     </div>
     <form class="composer" id="ask-form">
       <label class="sr" for="ask-input">Твоє запитання</label>
-      <textarea id="ask-input" rows="1" maxlength="600" placeholder="Наприклад: коли виїзд з Ізмаїла?" required></textarea>
+      <textarea id="ask-input" rows="1" maxlength="600" placeholder="${esc(T('ask.placeholder'))}" required></textarea>
       <button class="send" type="submit" aria-label="Надіслати">${ic('send')}</button>
     </form>
-    <p class="fine center">Юніончик може помилятися — перевіряй важливе в «Оголошеннях». Не вводь особисті дані. Працює на Claude від Anthropic.</p>
+    ${T('ask.fine') ? `<p class="fine center">${esc(T('ask.fine'))}</p>` : ''}
   </section>`;
 }
 function md(text) {
@@ -846,7 +912,7 @@ function renderMsg(m, i) {
   const ids = [...new Set([...(m.content.matchAll(/\[\[([\w-]+)\]\]/g))].map(x => x[1]))].filter(evById).slice(0, 4);
   return `<div class="msg ai ${m.pending ? 'typing' : ''}">${uni('uni-sm' + (m.pending ? ' is-think' : m.qid ? ' is-salute' : ''))}<div class="msg-body">${m.content ? md(m.content) : '<span class="dots"><i></i><i></i><i></i></span>'}
     ${!m.pending && ids.length ? `<div class="msg-cards">${ids.map(id => { const e = evById(id); return `<a href="#/event/${esc(id)}" class="mini t-${chapterOf(e.date).trail}"><small>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</small><b>${esc(e.title)}</b><span>${esc(e.venue || 'Локація уточнюється')} · ${statusLabel(e.status)}</span></a>`; }).join('')}</div>` : ''}
-    ${m.local ? '<small class="fine">Юніончик шукав по програмі · розумний режим не підключено</small>' : ''}
+    ${m.local ? '' : ''}
     ${m.pending ? '' : m.qid ? `<p class="escalated">${ic('send')} Питання передано організаторам. Відповідь з’явиться тут${S.me ? ' і в «Мій форум»' : ''}.</p>` : `<button class="link escalate" data-escalate="${i}">${ic('send')} Відповідь не допомогла? Передати питання організаторам</button>`}
   </div></div>`;
 }
@@ -926,11 +992,22 @@ function localAnswer(q) {
   if (dayHit && scored.some(([, e]) => e.date === dayHit)) scored.splice(0, scored.length, ...scored.filter(([, e]) => e.date === dayHit));
   const top = scored.length ? scored.filter(([sc]) => sc >= scored[0][0] * .5).slice(0, 4).map(([, e]) => e) : [];
   if (!top.length) return { content: 'У програмі не знайшов точної відповіді. Можу передати питання організаторам — натисни кнопку нижче.' };
-  return { content: 'Ось що знайшлося в програмі (усі події — попередні):\n\n' + sortEv(top).map(e => `- **${e.title}** — ${e.date.slice(8)}.12, ${formatRange(e)}${e.venue ? ', ' + e.venue : ''} [[${e.id}]]`).join('\n') };
+  return { content: 'Ось що знайшлося в програмі:\n\n' + sortEv(top).map(e => `- **${e.title}** — ${e.date.slice(8)}.12, ${formatRange(e)}${e.venue ? ', ' + e.venue : ''} [[${e.id}]]`).join('\n') };
 }
 
 /* ============ admin ============ */
-const ADMIN_TABS = [['todo', 'Що заповнити'], ['questions', 'Питання'], ['announcements', 'Оголошення'], ['participants', 'Учасники'], ['unionize', 'Unionize'], ['events', 'Програма'], ['speakers', 'Спікери'], ['sponsors', 'Спонсори'], ['settings', 'Налаштування']];
+const ADMIN_TABS = [
+  ['todo', 'Огляд', 'info', 'Щодня', 'Що ще не заповнено на сайті. Натисніть пункт — відкриється потрібний розділ.'],
+  ['questions', 'Питання', 'send', 'Щодня', 'Питання учасників, на які Юніончик не знав точної відповіді. Відповідайте тут або реплаєм (Reply) у Telegram.'],
+  ['announcements', 'Оголошення', 'bell', 'Щодня', 'Повідомлення для всіх: з’являються в розділі «Оголошення» і на головній, можна одразу надіслати push на телефони.'],
+  ['participants', 'Учасники', 'users', 'Люди', 'Список учасників, персональні коди входу в «Мій форум», групи доїзду та столи Unionize.'],
+  ['unionize', 'Unionize', 'star', 'Люди', 'Ведучі та кількість місць за кожним столом гри Unionize.'],
+  ['speakers', 'Спікери', 'users', 'Люди', 'Картки спікерів: ім’я, посада, організація, фото, події.'],
+  ['sponsors', 'Спонсори', 'star', 'Люди', 'Логотипи, короткі описи й посилання спонсорів та партнерів.'],
+  ['events', 'Програма', 'cal', 'Сайт', 'Усі події форуму: назва, час, місце, опис, спікери, видимість на сайті.'],
+  ['texts', 'Тексти сайту', 'edit', 'Сайт', 'Усі тексти сторінок: заголовки, описи днів, блоки головної, FAQ, підказки Юніончика, футер. Події, спікери й оголошення редагуються у своїх вкладках.'],
+  ['settings', 'Налаштування', 'compass', 'Сайт', 'Посилання на Telegram і фото, контакт координатора, підпис кількості учасників, точки збору груп доїзду.']
+];
 const GROUP_NAME = k => (S.admin.data?.transport || S.data.transport || []).find(t => t.key === k)?.title || '—';
 const meLink = code => location.origin + '/?c=' + encodeURIComponent(code);
 function adminTodo(d) {
@@ -951,7 +1028,7 @@ function adminTodo(d) {
 }
 function viewAdmin() {
   const me = S.admin.me;
-  const head = pageHead('ОРГАНІЗАТОРАМ', 'Панель організатора.', 'Учасники, розсадка, питання, оголошення, програма, спікери й спонсори — без програмування.');
+  const head = pageHead('ОРГАНІЗАТОРАМ', 'Панель організатора', 'Усе, що бачать учасники, редагується тут: питання, оголошення, люди, програма й тексти сайту.').replace('class="phead wrap"', 'class="phead phead-sm wrap"');
   if (!me) { loadAdmin(); return head + '<div class="wrap empty"><span class="spin"></span></div>'; }
   if (!me.admin) return `${head}<section class="wrap"><form class="tile login" id="login-form">
     <span class="kicker">${ic('lock')} ЗАХИЩЕНИЙ ДОСТУП</span><h3>Вхід організатора</h3><p>Пароль налаштовується на сервері. Учасникам він не потрібен.</p>
@@ -964,10 +1041,12 @@ function viewAdmin() {
   const todo = adminTodo(d);
   const openQ = d.questions.filter(q => q.status === 'open').length;
   const tab = S.admin.tab;
-  const views = { todo: () => adminTodoView(todo), questions: () => adminQuestions(d), announcements: () => adminAnnouncements(d), participants: () => adminParticipants(d), unionize: () => adminUnionize(d), events: () => adminEvents(d), speakers: () => adminPeople(d, 'speakers'), sponsors: () => adminPeople(d, 'sponsors'), settings: () => adminSettings(d) };
+  const views = { todo: () => adminTodoView(todo), questions: () => adminQuestions(d), announcements: () => adminAnnouncements(d), participants: () => adminParticipants(d), unionize: () => adminUnionize(d), events: () => adminEvents(d), speakers: () => adminPeople(d, 'speakers'), sponsors: () => adminPeople(d, 'sponsors'), settings: () => adminSettings(d), texts: () => adminTexts(d) };
   return `${head}<section class="wrap">
     <div class="stats"><div><b>${d.participants.length}</b><small>Учасників</small></div><div><b>${openQ}</b><small>Питань без відповіді</small></div><div><b>${d.subscriberCount}</b><small>Push-підписок</small></div></div>
-    <div class="filters admin-tabs">${ADMIN_TABS.map(([k, l]) => `<button class="chip ${tab === k ? 'on' : ''}" data-atab="${k}">${l}${k === 'questions' && openQ ? ` <span class="count">${openQ}</span>` : ''}${k === 'todo' && todo.length ? ` <span class="count">${todo.length}</span>` : ''}</button>`).join('')}<button class="chip" data-act="admin-push">${ic('bell')} Push мені про питання</button><button class="chip" data-act="logout">Вийти</button></div>
+    <div class="admin-nav">${['Щодня', 'Люди', 'Сайт'].map(g => `<div class="admin-group"><small>${g}</small><div class="admin-tabs">${ADMIN_TABS.filter(x => x[3] === g).map(([k, l, icon]) => `<button class="chip ${tab === k ? 'on' : ''}" data-atab="${k}">${ic(icon)} ${l}${k === 'questions' && openQ ? ` <span class="count">${openQ}</span>` : ''}${k === 'todo' && todo.length ? ` <span class="count">${todo.length}</span>` : ''}</button>`).join('')}</div></div>`).join('')}
+      <div class="admin-group"><small>Дії</small><div class="admin-tabs"><a class="chip" href="/" target="_blank" rel="noopener">${ic('ext')} Відкрити сайт</a><button class="chip" data-act="admin-push">${ic('bell')} Push мені про питання</button><button class="chip" data-act="logout">Вийти</button></div></div></div>
+    <p class="admin-help">${ic('info')} <span>${esc((ADMIN_TABS.find(x => x[0] === tab) || ADMIN_TABS[0])[4])}</span></p>
     ${(views[tab] || views.todo)()}
   </section>${footer()}`;
 }
@@ -1001,7 +1080,7 @@ function adminQuestions(d) {
         <div class="row-btns"><button class="btn btn-lift" type="submit">${ic('send')} Відповісти</button><button class="btn btn-ghost" type="button" data-del-q="${esc(q.id)}">${ic('trash')}</button></div>
       </form>`).join('') : '<p>Нових питань немає.</p>'}
     </div>
-    <div class="tile"><span class="kicker">БАЗА ЗНАНЬ CLAUDE · ${d.knowledge.length}</span>
+    <div class="tile"><span class="kicker">БАЗА ЗНАНЬ ЮНІОНЧИКА · ${d.knowledge.length}</span>
       ${d.knowledge.length ? d.knowledge.map(k => `<div class="adm-row"><div><b>${esc(k.q)}</b><p>${esc(k.a)}</p></div><button class="icon-btn" data-del-kb="${esc(k.id)}" aria-label="Прибрати з бази знань">${ic('trash')}</button></div>`).join('') : '<p>Тут з’являтимуться ваші відповіді. Юніончик використовує їх для наступних учасників.</p>'}
       ${done.length ? `<details><summary>Відповідені питання (${done.length})</summary>${done.map(q => `<div class="adm-row"><div><b>${esc(q.text)}</b><small>${esc(q.participantName || 'Анонімно')}${q.answeredBy === 'telegram' ? ` · відповідь з Telegram${q.answeredByName ? ' (' + esc(q.answeredByName) + ')' : ''}` : ''}</small><p>${esc(q.final)}</p></div></div>`).join('')}</details>` : ''}
     </div></div>`;
@@ -1050,6 +1129,24 @@ function adminPeople(d, col) {
   const sp = col === 'speakers';
   return `<div class="tile"><div class="sec-head row"><div><span class="kicker">${sp ? 'СПІКЕРИ' : 'СПОНСОРИ'} · ${d[col].length}</span><p class="fine">${sp ? 'Заміна спікера — відредагуйте картку або видаліть її. Фото й лого — посиланням https://.' : 'Лого посиланням https://, 1–2 речення про спонсора і посилання на його сайт.'}</p></div><button class="btn btn-lift" data-edit-x="${col}:new">${ic('plus')} Додати</button></div>
     ${[...d[col]].sort((a, b) => (a.order || 0) - (b.order || 0)).map(x => `<div class="adm-row"><div class="adm-person">${x.photo || x.logo ? `<img src="${esc(x.photo || x.logo)}" alt="">` : `<span>${esc(initials(x.name))}</span>`}<div><b>${esc(x.name)}</b><small>${esc(sp ? [x.role, x.org].filter(Boolean).join(' · ') || 'посада не вказана' : x.text || 'без опису')}</small></div></div><button class="icon-btn" data-edit-x="${col}:${esc(x.id)}" aria-label="Редагувати ${esc(x.name)}">${ic('edit')}</button></div>`).join('') || '<p>Поки порожньо.</p>'}</div>`;
+}
+function adminTexts(d) {
+  const cur = d.texts || {};
+  const groups = [...new Set(TX.map(x => x[1]))];
+  const field = ([k, , label, def, kind]) => {
+    const val = typeof cur[k] === 'string' ? cur[k] : def;
+    const changed = typeof cur[k] === 'string' && cur[k] !== def;
+    const rows = kind === 'list' ? Math.min(10, Math.max(3, def.split('\n').length + 1)) : 3;
+    const input = kind === 'list' || kind === 'text' ? `<textarea name="${k}" rows="${rows}">${esc(val)}</textarea>` : `<input name="${k}" value="${esc(val)}">`;
+    return `<label class="field tx-field ${changed ? 'is-changed' : ''}" data-tx="${esc((label + ' ' + val).toLowerCase())}"><span>${esc(label)}${changed ? ' <em>змінено</em>' : ''}</span>${input}
+      <small class="tx-foot">${kind === 'list' ? 'Кожен пункт — з нового рядка. ' : ''}<button type="button" class="link" data-tx-reset="${k}">↺ Повернути початковий текст</button></small></label>`;
+  };
+  return `<form class="tile" id="texts-form"><span class="kicker">ТЕКСТИ САЙТУ</span><h3>Редагування текстів</h3>
+    <p class="fine">Змініть текст і натисніть «Зберегти» — зміни одразу з’являться на сайті. Порожнє поле прибирає блок там, де це вказано. Кнопка «↺» повертає початковий текст.</p>
+    <div class="tx-save" style="padding:0 0 6px"><button class="btn btn-lift" type="submit">Зберегти тексти</button><a class="btn btn-ghost" href="/" target="_blank" rel="noopener">${ic('ext')} Подивитися сайт</a></div>
+    <label class="field"><span>Пошук</span><input type="search" id="tx-search" placeholder="Наприклад: футер, FAQ, день 3…"></label>
+    ${groups.map((g, i) => `<details class="tx-group" ${i === 0 ? 'open' : ''}><summary>${esc(g)} <small>${TX.filter(x => x[1] === g).length}</small></summary>${TX.filter(x => x[1] === g).map(field).join('')}</details>`).join('')}
+    <div class="tx-save"><button class="btn btn-lift" type="submit">Зберегти тексти</button></div></form>`;
 }
 function adminSettings(d) {
   const s = d.settings;
@@ -1285,6 +1382,7 @@ document.addEventListener('click', async ev => {
     if (d.copy) { ev.preventDefault(); try { await navigator.clipboard.writeText(d.copy); toast('Посилання скопійовано'); } catch { toast(d.copy); } return; }
     /* admin */
     if (d.atab) { S.admin.tab = d.atab; rerender(); return; }
+    if (d.txReset) { const el = t.closest('form')?.elements[d.txReset]; if (el) { el.value = TXD[d.txReset] ?? ''; el.dispatchEvent(new Event('input', { bubbles: true })); toast('Початковий текст повернено — натисніть «Зберегти тексти»'); } return; }
     if (d.edit) { openEditor(d.edit); return; }
     if (d.editP) { openParticipant(d.editP); return; }
     if (d.editX) { const [col, id] = d.editX.split(':'); openPerson(col, id); return; }
@@ -1296,7 +1394,6 @@ document.addEventListener('click', async ev => {
     if (d.delKb) { await api('/api/admin/knowledge/' + d.delKb, { method: 'DELETE' }); await loadAdmin(); return; }
     if (d.delEv) { if (!confirm('Видалити подію назавжди?')) return; await api('/api/admin/events/' + d.delEv, { method: 'DELETE' }); $('#editor').close(); await loadAdmin(); load(); return; }
     switch (d.act) {
-      case 'film': { const dlg = $('#film'); const fr = document.createElement('iframe'); fr.src = 'https://player.vimeo.com/video/1175179620?dnt=1&autoplay=1'; fr.allow = 'autoplay; fullscreen; picture-in-picture'; fr.title = 'Відео Молодіжної ради ПРМТУ'; $('.film-frame').replaceChildren(fr); dlg.addEventListener('close', () => $('.film-frame').replaceChildren(), { once: true }); dlg.showModal(); break; }
       case 'reload': await load(); render(); break;
       case 'sub': subscribe(); break;
       case 'unsub': unsubscribe(); break;
@@ -1344,6 +1441,12 @@ document.addEventListener('submit', async ev => {
       const tables = S.admin.data.unionize.tables.map(t => ({ n: t.n, host: data['host-' + t.n] ?? t.host, label: data['label-' + t.n] ?? t.label, capacity: data['cap-' + t.n] }));
       await api('/api/admin/unionize', { method: 'PUT', body: JSON.stringify({ tables }) }); toast('Збережено'); await loadAdmin(); load(); return;
     }
+    if (f.id === 'texts-form') {
+      const texts = {};
+      for (const [k, , , def] of TX) { if (!(k in data)) continue; const v = String(data[k]).replace(/\r/g, ''); texts[k] = v.trim() === def.trim() ? null : v; }
+      await api('/api/admin/texts', { method: 'PUT', body: JSON.stringify({ texts }) });
+      toast('Тексти збережено'); await loadAdmin(); load(); return;
+    }
     if (f.id === 'settings-form') {
       const transport = S.admin.data.transport.map(t => ({ key: t.key, meet: data['meet-' + t.key], note: data['note-' + t.key] }));
       await api('/api/admin/settings', { method: 'PUT', body: JSON.stringify({ coordinator: data.coordinator, telegramUrl: data.telegramUrl, driveUrl: data.driveUrl, participantsLabel: data.participantsLabel, transport }) });
@@ -1356,6 +1459,7 @@ document.addEventListener('submit', async ev => {
     }
   } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
 });
+document.addEventListener('input', e => { if (e.target.id !== 'tx-search') return; const q = e.target.value.trim().toLowerCase(); $$('#texts-form .tx-field').forEach(f => { f.hidden = q && !f.dataset.tx.includes(q); }); $$('#texts-form .tx-group').forEach(g => { if (q) g.open = [...g.querySelectorAll('.tx-field')].some(f => !f.hidden); g.hidden = q && ![...g.querySelectorAll('.tx-field')].some(f => !f.hidden); }); });
 document.addEventListener('input', e => { if (e.target.id === 'ask-input') { if (!S.asking) { S.uniAwake = true; const v = e.target.value.trim(); if (/дяку|спасиб|thank/i.test(v)) setUni('love'); else if (/[?!]{2,}|!$/.test(v)) setUni('wow'); else setUni(v ? 'listen' : 'idle'); } e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
 document.addEventListener('focusin', e => { if (e.target.id === 'ask-input') document.querySelectorAll('[data-uni-live]').forEach(el => { el.style.setProperty('--lx', '0px'); el.style.setProperty('--ly', '5px'); }); });
 document.addEventListener('keydown', e => { if (e.target.id === 'ask-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ask-form').requestSubmit(); } });
@@ -1373,7 +1477,7 @@ applyTheme(store.get('plai:theme', null));
 /* ============ tickers ============ */
 setInterval(() => {
   const cd = countdown();
-  for (const k of ['d', 'h', 'm', 's']) { const el = $(`[data-cd="${k}"]`); if (el) el.textContent = pad(cd[k]); }
+  for (const k of ['d', 'h', 'm', 's']) $$(`[data-cd="${k}"]`).forEach(el => { el.textContent = pad(cd[k]); });
 }, 1000);
 setInterval(async () => { await load(true); if (S.me) await refreshMe(); if (!['ask', 'admin'].includes(S.route.name) && !document.querySelector('dialog[open]') && !document.activeElement?.matches('input,textarea,select')) { const y = scrollY; render(); scrollTo(0, y); } }, 60000);
 
