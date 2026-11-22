@@ -11,20 +11,64 @@ const GROUP_LABEL = { izmail: 'учасники з Ізмаїла', odesa: 'уч
 
 /* ============ Юніончик — помічник форуму ============ */
 const UNI_NAME = 'Юніончик';
-const UNI_SVG = `<svg class="uni-svg" viewBox="-10 -10 220 230" aria-hidden="true" focusable="false"><g class="u-bob"><g class="u-head"><g class="u-arm u-arm-l"><path d="M50 125 Q30 140 26 160" stroke="#fff" stroke-width="20" fill="none" stroke-linecap="round"/><path d="M50 125 Q30 140 26 160" stroke="#1D6FA8" stroke-width="10" fill="none" stroke-linecap="round"/></g><g class="u-arm u-arm-r"><path d="M150 125 Q170 140 174 160" stroke="#fff" stroke-width="20" fill="none" stroke-linecap="round"/><path d="M150 125 Q170 140 174 160" stroke="#1D6FA8" stroke-width="10" fill="none" stroke-linecap="round"/></g><circle cx="100" cy="115" r="78" fill="#fff"/><g class="u-swirl"><g class="u-spin"><circle cx="100" cy="115" r="66" fill="none" stroke="#1D6FA8" stroke-width="15" stroke-linecap="round" stroke-dasharray="330 30" transform="rotate(-70 100 115)"/><circle cx="100" cy="115" r="58" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" stroke-dasharray="120 40 90 60" opacity=".75"/><circle cx="100" cy="115" r="72" fill="none" stroke="#1D6FA8" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 30 140 200" opacity=".6"/><path d="M140 52 Q170 60 176 88" fill="none" stroke="#1D6FA8" stroke-width="9" stroke-linecap="round"/><path d="M150 48 Q168 50 178 66" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" opacity=".8"/></g></g><ellipse cx="74" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/><ellipse cx="126" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/><g class="u-eyes"><g class="u-eye"><ellipse cx="82" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="84.5" cy="108" r="2.6" fill="#fff"/></g><g class="u-eye"><ellipse cx="118" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="120.5" cy="108" r="2.6" fill="#fff"/></g></g><g class="u-lids" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"><path d="M74 114 Q82 120 90 114"/><path d="M110 114 Q118 120 126 114"/></g><path class="u-mouth" d="M90 136 Q100 145 110 136" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"/><path class="u-open" d="M88 134 Q100 134 112 134 Q110 152 100 152 Q90 152 88 134 Z" fill="#0D1411"/><g class="u-dots" fill="#1D6FA8"><circle cx="150" cy="30" r="5"/><circle cx="166" cy="22" r="5"/><circle cx="182" cy="14" r="5"/></g><g class="u-zzz" font-family="Unbounded, sans-serif" font-weight="900" fill="#1D6FA8"><text x="150" y="40" font-size="18">z</text><text x="160" y="30" font-size="14">z</text><text x="168" y="22" font-size="11">z</text></g></g></g></svg>`;
-const UNI_SAY = { idle: 'Привіт! Я Юніончик. Питай про форум', listen: 'Слухаю уважно…', think: 'Шукаю в програмі…', happy: 'Готово! Ось відповідь', salute: 'Передав організаторам!', sleep: 'Zzz… Торкнись, щоб розбудити' };
+const UNI_SVG = `<svg class="uni-svg" viewBox="-14 -14 228 234" aria-hidden="true" focusable="false"><g class="u-bob"><g class="u-head"><circle cx="100" cy="115" r="78" fill="#fff"/><g class="u-swirl"><g class="u-spin"><circle cx="100" cy="115" r="66" fill="none" stroke="#1D6FA8" stroke-width="15" stroke-linecap="round" stroke-dasharray="330 30" transform="rotate(-70 100 115)"/><circle cx="100" cy="115" r="58" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" stroke-dasharray="120 40 90 60" opacity=".75"/><circle cx="100" cy="115" r="72" fill="none" stroke="#1D6FA8" stroke-width="3" stroke-linecap="round" stroke-dasharray="60 30 140 200" opacity=".6"/><path d="M140 52 Q170 60 176 88" fill="none" stroke="#1D6FA8" stroke-width="9" stroke-linecap="round"/><path d="M150 48 Q168 50 178 66" fill="none" stroke="#1D6FA8" stroke-width="4" stroke-linecap="round" opacity=".8"/></g></g><g class="u-cheeks"><ellipse cx="74" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/><ellipse cx="126" cy="132" rx="9" ry="6" fill="#FF8FA3" opacity=".8"/></g><g class="u-look"><g class="u-eyes"><g class="u-eye u-eye-l"><ellipse cx="82" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="84.5" cy="108" r="2.6" fill="#fff"/></g><g class="u-eye u-eye-r"><ellipse cx="118" cy="112" rx="7.5" ry="10" fill="#0D1411"/><circle cx="120.5" cy="108" r="2.6" fill="#fff"/></g></g><g class="u-lids" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"><path d="M74 114 Q82 120 90 114"/><path d="M110 114 Q118 120 126 114"/></g><g class="u-joy" stroke="#0D1411" stroke-width="4.5" fill="none" stroke-linecap="round"><path d="M74 115 Q82 104 90 115"/><path d="M110 115 Q118 104 126 115"/></g><g class="u-winkeye" stroke="#0D1411" stroke-width="4.5" fill="none" stroke-linecap="round"><path d="M110 113 Q118 108 126 113"/></g><g class="u-hearteyes"><path transform="translate(82 110) scale(0.9)" d="M0 -4 C-3 -10 -12 -8 -12 -1 C-12 6 -4 10 0 14 C4 10 12 6 12 -1 C12 -8 3 -10 0 -4 Z" fill="#FF4D6D"/><path transform="translate(118 110) scale(0.9)" d="M0 -4 C-3 -10 -12 -8 -12 -1 C-12 6 -4 10 0 14 C4 10 12 6 12 -1 C12 -8 3 -10 0 -4 Z" fill="#FF4D6D"/></g><g class="u-stareyes" fill="#FFD21E" stroke="#0D1411" stroke-width="2"><path d="M82 100 L85 108 L93 109 L87 114 L89 122 L82 118 L75 122 L77 114 L71 109 L79 108 Z"/><path d="M118 100 L121 108 L129 109 L123 114 L125 122 L118 118 L111 122 L113 114 L107 109 L115 108 Z"/></g></g><path class="u-mouth" d="M90 136 Q100 145 110 136" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"/><path class="u-open" d="M88 134 Q100 134 112 134 Q110 152 100 152 Q90 152 88 134 Z" fill="#0D1411"/><path class="u-tongue" d="M94 146 Q100 141 106 146 Q104 151 100 151 Q96 151 94 146 Z" fill="#FF4D6D"/><ellipse class="u-o" cx="100" cy="142" rx="6" ry="7.5" fill="#0D1411"/><path class="u-frown" d="M90 145 Q100 136 110 145" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round"/><path class="u-cat" d="M89 137 Q94 143 100 138 Q106 143 111 137" stroke="#0D1411" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/><path class="u-sweat" d="M150 78 Q156 90 150 95 Q144 90 150 78 Z" fill="#7CC6F2" stroke="#fff" stroke-width="2"/></g><g class="u-arm u-arm-l"><path d="M34 140 Q14 150 12 178" stroke="#fff" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M34 140 Q14 150 12 178" stroke="#1D6FA8" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="12" cy="179" r="10" fill="#fff"/><circle cx="12" cy="179" r="6.5" fill="#1D6FA8"/></g><g class="u-arm u-arm-r"><path d="M166 140 Q186 150 188 178" stroke="#fff" stroke-width="22" fill="none" stroke-linecap="round"/><path d="M166 140 Q186 150 188 178" stroke="#1D6FA8" stroke-width="11" fill="none" stroke-linecap="round"/><circle cx="188" cy="179" r="10" fill="#fff"/><circle cx="188" cy="179" r="6.5" fill="#1D6FA8"/></g><g class="u-dots" fill="#1D6FA8"><circle cx="150" cy="30" r="5"/><circle cx="166" cy="22" r="5"/><circle cx="182" cy="14" r="5"/></g><g class="u-zzz" font-family="Unbounded, sans-serif" font-weight="900" fill="#1D6FA8"><text x="150" y="40" font-size="18">z</text><text x="160" y="30" font-size="14">z</text><text x="168" y="22" font-size="11">z</text></g><g class="u-hearts"><path transform="translate(40 40) scale(1)" d="M0 -4 C-3 -10 -12 -8 -12 -1 C-12 6 -4 10 0 14 C4 10 12 6 12 -1 C12 -8 3 -10 0 -4 Z" fill="#FF4D6D"/><path transform="translate(160 30) scale(0.8)" d="M0 -4 C-3 -10 -12 -8 -12 -1 C-12 6 -4 10 0 14 C4 10 12 6 12 -1 C12 -8 3 -10 0 -4 Z" fill="#FF4D6D"/><path transform="translate(100 10) scale(1.1)" d="M0 -4 C-3 -10 -12 -8 -12 -1 C-12 6 -4 10 0 14 C4 10 12 6 12 -1 C12 -8 3 -10 0 -4 Z" fill="#FF4D6D"/></g><g class="u-spark" fill="#FFD21E" stroke="#0D1411" stroke-width="2"><path d="M30 50 L34 60 L44 64 L34 68 L30 78 L26 68 L16 64 L26 60 Z"/><path d="M168 46 L171 54 L179 57 L171 60 L168 68 L165 60 L157 57 L165 54 Z"/></g><text class="u-q" x="160" y="40" font-family="Unbounded, sans-serif" font-weight="900" font-size="30" fill="#1D6FA8" stroke="#fff" stroke-width="2" paint-order="stroke">?</text><text class="u-ex" x="160" y="40" font-family="Unbounded, sans-serif" font-weight="900" font-size="32" fill="#FF5A1F" stroke="#fff" stroke-width="2" paint-order="stroke">!</text></g></svg>`;
+const UNI_SAY = {
+  idle: 'Привіт! Я Юніончик. Питай про форум', listen: 'Слухаю уважно…', think: 'Шукаю в програмі…', happy: 'Готово! Ось відповідь',
+  salute: 'Передав організаторам! Відповідь прийде сюди', sleep: 'Zzz… Торкнись, щоб розбудити', love: 'Дуже приємно! Звертайся ще', oops: 'Ой… щось пішло не так. Спробуй ще раз',
+  wow: 'Ого, цікаве питання!', giggle: 'Хі-хі, лоскотно!', wink: 'Я все знаю про форум 😉'.replace(' 😉', ''), wave: 'Привіт-привіт!', stretch: 'Розімнуся трішки…', yawn: 'Ох, довгий був день…', look: 'Хтось мене кликав?', hop: 'Гоп!', spin: 'Вжух!'
+};
+const UNI_TIPS = ['Спитай, що зараз відбувається', 'Знаю, де твій стіл на Unionize', 'Підкажу, коли автобус', 'Розкажу про будь-якого спікера', 'Не знаю відповіді — спитаю організаторів', 'Спитай про паралельні тренінги'];
+const UNI_STATES = ['listen', 'think', 'happy', 'salute', 'sleep', 'love', 'oops', 'wow', 'giggle', 'wink', 'wave', 'stretch', 'yawn', 'look', 'hop', 'spin'];
 const uni = (cls = '', live = false) => `<span class="uni ${cls}"${live ? ' data-uni-live' : ''} aria-hidden="true">${UNI_SVG}</span>`;
-const uniNight = () => { const h = +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date()) % 24; return h >= 23 || h < 7; };
+const kyivHour = () => +new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Kyiv', hour: '2-digit', hour12: false }).format(new Date()) % 24;
+const uniNight = () => { const h = kyivHour(); return h >= 23 || h < 7; };
+function uniGreeting() { const h = kyivHour(); return h < 5 ? 'Ще не спиш? Я теж!' : h < 12 ? 'Доброго ранку! Я Юніончик' : h < 18 ? 'Привіт! Я Юніончик. Питай про форум' : 'Добрий вечір! Чим допомогти?'; }
 function uniBase() { return !S.uniAwake && uniNight() ? 'sleep' : 'idle'; }
 document.querySelectorAll('[data-uni-static]').forEach(el => { el.innerHTML = UNI_SVG; });
 let uniTimer = 0;
-function setUni(state, ms) {
+function uniPaint(state, say) {
+  document.querySelectorAll('[data-uni-live]').forEach(el => { UNI_STATES.forEach(st => el.classList.remove('is-' + st)); if (state !== 'idle') el.classList.add('is-' + state); });
+  document.querySelectorAll('[data-uni-say]').forEach(el => { const t = say || (state === 'idle' ? uniGreeting() : UNI_SAY[state] || uniGreeting()); if (el.textContent !== t) { el.textContent = t; el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } });
+}
+function setUni(state, ms, say) {
   clearTimeout(uniTimer);
   S.uni = state || uniBase();
-  document.querySelectorAll('[data-uni-live]').forEach(el => { el.classList.remove('is-listen', 'is-think', 'is-happy', 'is-salute', 'is-sleep'); if (S.uni !== 'idle') el.classList.add('is-' + S.uni); });
-  document.querySelectorAll('[data-uni-say]').forEach(el => { el.textContent = UNI_SAY[S.uni] || UNI_SAY.idle; });
+  uniPaint(S.uni, say);
   if (ms) uniTimer = setTimeout(() => setUni(uniBase()), ms);
 }
+/* «живий» Юніончик: мікродії в спокої, погляд за курсором, реакції на дотик */
+const UNI_IDLE = [['wave', 1800], ['wink', 1300], ['look', 2400], ['giggle', 1500], ['stretch', 2000], ['hop', 900], ['spin', 1300], ['wow', 1400]];
+let uniIdleTimer = 0, uniTipIdx = 0;
+function uniIdleTick() {
+  clearTimeout(uniIdleTimer);
+  uniIdleTimer = setTimeout(() => {
+    const live = document.querySelector('[data-uni-live]');
+    if (live && !document.hidden && !S.asking && (S.uni === 'idle' || !S.uni)) {
+      const h = kyivHour();
+      if (Math.random() < .35 && document.querySelector('[data-uni-say]')) uniPaint('idle', UNI_TIPS[uniTipIdx++ % UNI_TIPS.length]);
+      else { const [st, ms] = h >= 21 && Math.random() < .3 ? ['yawn', 2600] : UNI_IDLE[Math.floor(Math.random() * UNI_IDLE.length)]; uniPaint(st); clearTimeout(uniTimer); uniTimer = setTimeout(() => { if (S.uni === 'idle' || !S.uni) uniPaint('idle'); }, ms); }
+    }
+    uniIdleTick();
+  }, 5000 + Math.random() * 6000);
+}
+uniIdleTick();
+const UNI_POKES = [['giggle', 1500], ['love', 1800], ['hop', 900], ['wink', 1300], ['spin', 1300], ['wave', 1600]];
+function uniPoke() {
+  S.uniAwake = true; if (S.asking) return;
+  const [st, ms] = S.uni === 'sleep' ? ['wow', 1500] : UNI_POKES[Math.floor(Math.random() * UNI_POKES.length)];
+  setUni(st, ms);
+}
+let uniLookRaf = 0;
+document.addEventListener('pointermove', e => {
+  if (uniLookRaf || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  uniLookRaf = requestAnimationFrame(() => {
+    uniLookRaf = 0;
+    document.querySelectorAll('[data-uni-live]').forEach(el => {
+      const r = el.getBoundingClientRect(); const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2); const d = Math.hypot(dx, dy) || 1; const k = Math.min(1, d / 300);
+      el.style.setProperty('--lx', (dx / d * 5 * k).toFixed(2) + 'px'); el.style.setProperty('--ly', (dy / d * 4 * k).toFixed(2) + 'px');
+    });
+  });
+}, { passive: true });
 const WEEKDAY = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', '2026-12-07': 'Понеділок', '2026-12-08': 'Вівторок', '2026-12-09': 'Середа', '2026-12-10': 'Четвер' };
 const CHAPTERS = [
   { id: '2026-12-07', idx: '01', small: 'ПРИБУТТЯ', name: 'Знайомство', tag: 'Починається нова історія', sub: 'Від реєстрації до першого спільного вечора.', trail: 'green', trailName: 'Зелена траса', trailNote: 'М’який старт: знайомимось і заселяємось.' },
@@ -328,7 +372,7 @@ function viewHome() {
   <section class="claude-band">
     <div class="wrap claude-grid">
       <div>
-        <div class="uni-hero">${uni('uni-lg u-wave')}<span class="uni-say">Привіт! Я Юніончик</span></div>
+        <a class="uni-hero" href="#/ask" aria-label="Поговорити з Юніончиком">${uni('uni-lg', true)}<span class="uni-say" data-uni-say>${uniGreeting()}</span></a>
         <span class="kicker kicker-inv">ПОМІЧНИК ФОРУМУ · ТІЛЬКИ ТУТ</span>
         <h2>Запитай форум.<br><em>Юніончик відповість.</em></h2>
         <p>Юніончик знає всю програму, оголошення, доїзд і спікерів — і нічого не вигадує. Якщо чогось ще не підтверджено, так і скаже, а складне питання передасть організаторам.</p>
@@ -775,7 +819,7 @@ function viewAsk() {
   return `
   <section class="ask wrap">
     <header class="ask-head">
-      <button class="ask-uni" type="button" data-act="uni-poke" aria-label="Юніончик">${uni('uni-lg' + (S.uni !== 'idle' ? ' is-' + S.uni : ''), true)}<span class="uni-say" data-uni-say>${UNI_SAY[S.uni]}</span></button>
+      <button class="ask-uni" type="button" data-act="uni-poke" aria-label="Юніончик">${uni('uni-lg' + (S.uni !== 'idle' ? ' is-' + S.uni : ''), true)}<span class="uni-say" data-uni-say>${S.uni === 'idle' ? uniGreeting() : UNI_SAY[S.uni]}</span></button>
       <div><span class="kicker">ПОМІЧНИК ФОРУМУ · ЮНІОНЧИК</span><h1>Запитай форум.</h1>
       <p>${ai ? 'Юніончик відповідає лише з програми, оголошень і відповідей організаторів. Якщо він не знає точно — передасть питання організаторам, і відповідь прийде сюди.' : 'Розумний режим ще не підключено — Юніончик шукає відповіді в програмі, а питання без відповіді передає організаторам.'}${S.me ? ' Юніончик бачить ваш «Мій форум», тож може відповісти й про ваш стіл чи сесії.' : ''}</p></div>
     </header>
@@ -848,13 +892,14 @@ async function ask(q) {
         if (d.error) msg.content += '\n\n' + d.error;
       }
     }
-    if (!msg.content) msg.content = 'Не вдалося отримати відповідь. Спробуй ще раз.';
+    if (!msg.content) { msg.content = 'Не вдалося отримати відповідь. Спробуй ще раз.'; msg.failed = true; }
   } catch (err) {
     if (err.fallback || err.status === 503 || err.status === 502) Object.assign(msg, localAnswer(q), { local: true });
-    else msg.content = err.message || 'Не вдалося отримати відповідь.';
+    else { msg.content = err.message || 'Не вдалося отримати відповідь.'; msg.failed = true; }
   }
   msg.pending = false; S.asking = false; paintChat();
-  setUni(msg.qid ? 'salute' : 'happy', msg.qid ? 3500 : 2600);
+  const thanks = /дяку|спасиб|thank|супер|клас|топ|круто|люблю|❤/i.test(q);
+  if (msg.failed) setUni('oops', 3000); else if (msg.qid) setUni('salute', 3500); else if (thanks) setUni('love', 3000); else setUni('happy', 2600);
 }
 function localAnswer(q) {
   const s = q.toLowerCase();
@@ -1194,6 +1239,7 @@ function render(scrollTop = false) {
   if (S.route.name === 'home') startTopo();
   if (S.route.name === 'info') pushStatus();
   if (S.route.name === 'ask' && !S.myQuestionsLoaded) { S.myQuestionsLoaded = true; refreshMyQuestions().then(() => { if (S.route.name === 'ask' && S.myQuestions.length) render(); }); }
+  if ((S.route.name === 'ask' || S.route.name === 'home') && S.uni !== 'sleep' && !S.asking) setTimeout(() => { if (!S.uni || S.uni === 'idle') { uniPaint('wave', S.route.name === 'ask' ? uniGreeting() : null); setTimeout(() => { if (!S.uni || S.uni === 'idle') uniPaint('idle'); }, 1800); } }, 500);
   if (S.route.name === 'ask') { const i = $('#ask-input'); i && matchMedia('(min-width: 900px)').matches && i.focus(); $('#chat')?.lastElementChild?.scrollIntoView({ block: 'end' }); }
   marks();
   if (scrollTop) scrollTo({ top: 0, behavior: 'instant' in document.documentElement.style ? 'instant' : 'auto' });
@@ -1256,7 +1302,7 @@ document.addEventListener('click', async ev => {
       case 'unsub': unsubscribe(); break;
       case 'theme': toggleTheme(); break;
       case 'me-logout': await api('/api/me/logout', { method: 'POST' }); S.me = null; toast('Ви вийшли'); render(); break;
-      case 'uni-poke': S.uniAwake = true; if (!S.asking) setUni('happy', 1800); break;
+      case 'uni-poke': uniPoke(); break;
       case 'admin-push': subscribe(true); break;
       case 'tg-refresh': await loadAdmin(); toast(S.admin.tg?.connected ? 'Telegram підключено' : 'Ще не підключено'); break;
       case 'tg-test': await api('/api/admin/telegram/test', { method: 'POST' }).then(() => toast('Тест надіслано в Telegram')).catch(e => toast(e.message)); break;
@@ -1310,7 +1356,8 @@ document.addEventListener('submit', async ev => {
     }
   } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
 });
-document.addEventListener('input', e => { if (e.target.id === 'ask-input') { if (!S.asking) { S.uniAwake = true; setUni(e.target.value.trim() ? 'listen' : 'idle'); } e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
+document.addEventListener('input', e => { if (e.target.id === 'ask-input') { if (!S.asking) { S.uniAwake = true; const v = e.target.value.trim(); if (/дяку|спасиб|thank/i.test(v)) setUni('love'); else if (/[?!]{2,}|!$/.test(v)) setUni('wow'); else setUni(v ? 'listen' : 'idle'); } e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
+document.addEventListener('focusin', e => { if (e.target.id === 'ask-input') document.querySelectorAll('[data-uni-live]').forEach(el => { el.style.setProperty('--lx', '0px'); el.style.setProperty('--ly', '5px'); }); });
 document.addEventListener('keydown', e => { if (e.target.id === 'ask-input' && e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); $('#ask-form').requestSubmit(); } });
 
 /* ============ theme ============ */
