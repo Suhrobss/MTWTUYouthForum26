@@ -1,6 +1,6 @@
 // MTWTU Youth Forum 2026 — PLAI//OS
 // Zero-framework Node server: static files, public API, participant cabinets (personal codes),
-// parallel-session sign-up, Unionize seating, organizer admin, Web Push and a Claude concierge
+// parallel-session sign-up, Unionize seating, organizer admin, Web Push and the Юніончик assistant (Claude-powered)
 // that escalates questions it cannot answer to organizers.
 'use strict';
 const http = require('node:http');
@@ -262,7 +262,7 @@ function tgWho(q) {
 }
 async function tgNotifyQuestion(q) {
   const t = tgState(); if (!TG_TOKEN || !t.chatId) return;
-  const m = await tg('sendMessage', { chat_id: t.chatId, parse_mode: 'HTML', text: `❓ <b>Питання учасника</b>\n${tgEsc(tgWho(q))}\n\n${tgEsc(q.text)}\n\n<i>Щоб відповісти — натисніть «Відповісти» (Reply) на це повідомлення. Claude відшліфує текст і надішле учаснику на сайт.</i>` });
+  const m = await tg('sendMessage', { chat_id: t.chatId, parse_mode: 'HTML', text: `❓ <b>Питання учасника</b>\n${tgEsc(tgWho(q))}\n\n${tgEsc(q.text)}\n\n<i>Щоб відповісти — натисніть «Відповісти» (Reply) на це повідомлення. Юніончик відшліфує текст і надішле учаснику на сайт.</i>` });
   if (m) { q.tg = { chatId: t.chatId, messageId: m.message_id }; await saveStore(); }
 }
 async function tgHandle(u) {
@@ -275,7 +275,7 @@ async function tgHandle(u) {
     if (start[1] && start[1] === t.linkCode) {
       Object.assign(t, { chatId: chat.id, chatTitle: chat.title || [chat.first_name, chat.last_name].filter(Boolean).join(' ') || 'чат', linkedAt: new Date().toISOString() });
       await saveStore();
-      return tg('sendMessage', { chat_id: chat.id, text: 'Готово. Сюди надходитимуть питання учасників, на які Claude не знає відповіді.\n\nЩоб відповісти — зробіть Reply на повідомлення з питанням. Команда /open — показати всі питання без відповіді.' });
+      return tg('sendMessage', { chat_id: chat.id, text: 'Готово. Сюди надходитимуть питання учасників, на які Юніончик не знає відповіді.\n\nЩоб відповісти — зробіть Reply на повідомлення з питанням. Команда /open — показати всі питання без відповіді.' });
     }
     if (chat.type === 'private') return tg('sendMessage', { chat_id: chat.id, text: 'Підключення робиться з адмінки сайту форуму: «Налаштування» → «Підключити Telegram».' });
     return;
@@ -294,7 +294,7 @@ async function tgHandle(u) {
   await tg('sendChatAction', { chat_id: chat.id, action: 'typing' });
   const { q: done } = await answerQuestion(q, text, { by: 'telegram' });
   done.answeredByName = by; await saveStore();
-  await tg('sendMessage', { chat_id: chat.id, reply_to_message_id: msg.message_id, allow_sending_without_reply: true, parse_mode: 'HTML', text: `✅ <b>Надіслано учаснику:</b>\n${tgEsc(done.final)}\n\n<i>Відповідь додано в базу знань Claude.</i>` });
+  await tg('sendMessage', { chat_id: chat.id, reply_to_message_id: msg.message_id, allow_sending_without_reply: true, parse_mode: 'HTML', text: `✅ <b>Надіслано учаснику:</b>\n${tgEsc(done.final)}\n\n<i>Відповідь додано в базу знань Юніончика.</i>` });
 }
 async function tgLoop() {
   if (!TG_TOKEN) return;
@@ -381,7 +381,7 @@ function systemPrompt(me) {
     const tr = store.transport.find(t => t.key === me.group);
     personal = `Користувач увійшов: ${me.name}. Група доїзду: ${tr ? tr.title : 'не вказана'}. Записаний на сесії: ${sess.join(', ') || 'ще ні'}. Unionize: ${me.table ? `стіл ${me.table}, місце ${me.seat}` : 'місце ще не призначене'}.${me.team ? ' Команда: ' + me.team + '.' : ''}${me.room ? ' Кімната: ' + me.room + '.' : ''}`;
   }
-  return `Ти — «Claude у Плаї», цифровий консьєрж MTWTU Youth Forum 2026. Відповідай українською, тепло, коротко (до 110 слів), без емодзі.
+  return `Ти — Юніончик, милий помічник-талісман MTWTU Youth Forum 2026 (персонаж за мотивами логотипа MTWTU Youth). Говори про себе в чоловічому роді від першої особи («я знайду», «я передам»). Відповідай українською, тепло, дружньо й коротко (до 110 слів), без емодзі. Якщо питають, хто ти або на чому працюєш: ти Юніончик, помічник форуму, працюєш на моделі Claude від Anthropic і відповідаєш лише з даних організаторів.
 
 ЖОРСТКІ ПРАВИЛА:
 1. Використовуй ЛИШЕ факти з блоків нижче. Не додавай від себе жодних деталей: місць, часу, імен, правил, описів території чи атмосфери.
@@ -427,7 +427,7 @@ async function handleAsk(req, res) {
   if (!upstream || !upstream.ok || !upstream.body) {
     const detail = upstream ? await upstream.text().catch(() => '') : '';
     console.error('[claude]', upstream?.status, detail.slice(0, 300));
-    return json(res, 502, { error: 'Claude зараз недоступний', fallback: true });
+    return json(res, 502, { error: 'Юніончик зараз недоступний', fallback: true });
   }
   res.writeHead(200, { ...SECURITY_HEADERS, 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no', Connection: 'keep-alive' });
   const decoder = new TextDecoder(); let buf = '', full = '';
