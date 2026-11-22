@@ -271,13 +271,23 @@ async function createQuestion({ text, participant, asker, draft }) {
   tgNotifyQuestion(q).catch(err => console.error('[tg notify]', err.message));
   return q;
 }
-async function answerQuestion(q, rawText, { polish = true, addToKnowledge = true, by = 'admin' } = {}) {
+// level 0 — friendly rewrite; 1 — light edit close to the organizer's words; 2 — only spelling/punctuation; 3 — organizer's text as is
+const POLISH = [
+  'Ти редагуєш відповідь організаторів молодіжного форуму для учасника. Перепиши відповідь організатора українською: дружньо, коротко, чітко, без емодзі. Не додавай жодних фактів, яких немає у відповіді організатора. Поверни лише текст відповіді.',
+  'Ти мінімально редагуєш відповідь організатора молодіжного форуму. Збережи його слова, порядок думок, довжину й тон якомога ближче до оригіналу; лише виправ граматику й пунктуацію та зроби незграбні місця трохи гладшими. Не додавай нових фактів, привітань, підписів чи пояснень, без емодзі. Поверни лише текст відповіді.',
+  'Виправ у тексті організатора лише орфографію, пунктуацію та явні описки. Нічого не перефразовуй, не додавай і не прибирай, збережи всі слова й порядок. Поверни лише виправлений текст.'
+];
+const POLISH_NOTE = ['Варіант Юніончика', 'Ближче до вашого тексту', 'Ваш текст, виправлені лише помилки', 'Ваш текст без змін'];
+async function polishAnswer(q, raw, level = 0) {
+  level = Math.max(0, Math.min(3, Number(level) || 0));
+  if (level >= 3) return { text: raw, level, ai: false };
+  const t = await claudeOnce(POLISH[level], `Питання учасника: ${q.text}\n\nВідповідь організатора: ${raw}`);
+  return t ? { text: t, level, ai: true } : { text: raw, level: 3, ai: false };
+}
+async function answerQuestion(q, rawText, { polish = true, addToKnowledge = true, by = 'admin', final: given = '' } = {}) {
   const raw = str(rawText, 1500); if (!raw) throw fail(400, 'Напишіть відповідь');
-  let final = raw;
-  if (polish) {
-    const polished = await claudeOnce('Ти редагуєш відповідь організаторів молодіжного форуму для учасника. Перепиши відповідь організатора українською: дружньо, коротко, чітко, без емодзі. Не додавай жодних фактів, яких немає у відповіді організатора. Поверни лише текст відповіді.', `Питання учасника: ${q.text}\n\nВідповідь організатора: ${raw}`);
-    if (polished) final = polished;
-  }
+  let final = str(given, 2000) || raw;
+  if (!str(given, 2000) && polish) final = (await polishAnswer(q, raw, 0)).text;
   Object.assign(q, { status: 'answered', raw, final, answeredAt: new Date().toISOString(), answeredBy: by });
   if (addToKnowledge) { store.knowledge = store.knowledge.filter(k => k.id !== q.id); store.knowledge.unshift({ id: q.id, q: q.text, a: final, createdAt: q.answeredAt }); }
   await saveStore();
@@ -288,15 +298,15 @@ async function answerQuestion(q, rawText, { polish = true, addToKnowledge = true
 
 /* ---------------- Telegram: questions to organizers' group ---------------- */
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN || '';
-let tgBot = null;
+let tgBot = null, tgLastUpdate = null, tgLastError = null;
 const tgEsc = v => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 async function tg(method, params = {}) {
   if (!TG_TOKEN) return null;
   try {
-    const r = await fetch(`https://api.telegram.org/bot${TG_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) });
+    const r = await fetch(`${process.env.TELEGRAM_API_URL || 'https://api.telegram.org'}/bot${TG_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params) });
     const d = await r.json();
-    if (!d.ok) console.warn('[tg]', method, d.description);
+    if (!d.ok) { console.warn('[tg]', method, d.description); if (method !== 'getUpdates' || !/terminated by other/.test(d.description)) tgLastError = `${method}: ${d.description}`; }
     return d.ok ? d.result : null;
   } catch (err) { console.warn('[tg]', method, err.message); return null; }
 }
@@ -310,12 +320,55 @@ function tgWho(q) {
 async function tgNotifyQuestion(q) {
   const t = tgState(); if (!TG_TOKEN || !t.chatId) return;
   const m = await tg('sendMessage', { chat_id: t.chatId, parse_mode: 'HTML', text: `❓ <b>Питання учасника</b>\n${tgEsc(tgWho(q))}\n\n${tgEsc(q.text)}\n\n<i>Щоб відповісти — натисніть «Відповісти» (Reply) на це повідомлення. Юніончик відшліфує текст і надішле учаснику на сайт.</i>` });
-  if (m) { q.tg = { chatId: t.chatId, messageId: m.message_id }; await saveStore(); }
+  if (m) { q.tg = { chatId: t.chatId, messageId: m.message_id }; q.tgMsgs = [...new Set([...(q.tgMsgs || []), m.message_id])].slice(-10); await saveStore(); }
+}
+const tgKb = (q, level) => ({ inline_keyboard: [[{ text: '✅ Надіслати учаснику', callback_data: `s:${q.id}`, style: 'success' }], [...(level < 3 ? [{ text: '🔁 Перефразувати', callback_data: `r:${q.id}` }] : []), { text: '✖️ Скасувати', callback_data: `x:${q.id}` }]] });
+const tgDraftText = (q, d) => `✍️ <b>Ось як піде учаснику</b> <i>(${tgEsc(POLISH_NOTE[d.level])})</i>:\n\n${tgEsc(d.text)}\n\n<i>Питання: ${tgEsc(q.text.slice(0, 200))}</i>\n${d.level < 3 ? '<i>«Перефразувати» — зробить текст ближчим до вашого.</i>' : '<i>Це ваш текст без змін.</i>'}`;
+async function tgSendKb(params) {
+  const r = await tg('sendMessage', params); if (r) return r;
+  const kb = JSON.parse(JSON.stringify(params.reply_markup)); kb.inline_keyboard.flat().forEach(b => delete b.style);
+  return tg('sendMessage', { ...params, reply_markup: kb });
+}
+async function tgEditKb(params) {
+  const r = await tg('editMessageText', params); if (r || !params.reply_markup) return r;
+  const kb = JSON.parse(JSON.stringify(params.reply_markup)); kb.inline_keyboard.flat().forEach(b => delete b.style);
+  return tg('editMessageText', { ...params, reply_markup: kb });
+}
+async function tgCallback(cb) {
+  const t = tgState(); const [act, qid] = String(cb.data || '').split(':');
+  const msg = cb.message; const ack = text => tg('answerCallbackQuery', { callback_query_id: cb.id, ...(text ? { text } : {}) });
+  if (!msg || msg.chat.id !== t.chatId) return ack();
+  const q = store.questions.find(x => x.id === qid); const d = q?.tgDraft;
+  if (!q || !d || d.msgId !== msg.message_id) { await ack('Ця чернетка вже неактуальна'); return tg('editMessageReplyMarkup', { chat_id: msg.chat.id, message_id: msg.message_id, reply_markup: { inline_keyboard: [] } }); }
+  if (act === 's') {
+    await ack('Надсилаю…');
+    const { q: done, push } = await answerQuestion(q, d.raw, { final: d.text, by: 'telegram' });
+    done.answeredByName = d.by; delete done.tgDraft; await saveStore();
+    return tg('editMessageText', { chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'HTML', text: `✅ <b>Надіслано учаснику:</b>\n${tgEsc(done.final)}\n\n<i>${done.participantId || done.asker ? 'Відповідь з’явилася в учасника на сайті' : 'Відповідь збережено'}${push?.sent ? ' і прийшла push-сповіщенням' : ''}. Додано в базу знань Юніончика.</i>` });
+  }
+  if (act === 'r') {
+    if (d.level >= 3) return ack();
+    await ack('Перефразовую ближче до вашого тексту…');
+    const r = await polishAnswer(q, d.raw, d.level + 1);
+    Object.assign(d, { text: r.text, level: r.level }); await saveStore();
+    return tgEditKb({ chat_id: msg.chat.id, message_id: msg.message_id, parse_mode: 'HTML', text: tgDraftText(q, d), reply_markup: tgKb(q, d.level) });
+  }
+  if (act === 'x') {
+    await ack('Скасовано'); delete q.tgDraft; await saveStore();
+    return tg('editMessageText', { chat_id: msg.chat.id, message_id: msg.message_id, text: 'Скасовано. Щоб відповісти ще раз — зробіть Reply на повідомлення з питанням.' });
+  }
+  return ack();
 }
 async function tgHandle(u) {
+  tgLastUpdate = new Date().toISOString();
+  if (u.callback_query) return tgCallback(u.callback_query);
   const msg = u.message; if (!msg) return;
   const t = tgState(), chat = msg.chat;
-  if (msg.migrate_to_chat_id && chat.id === t.chatId) { t.chatId = msg.migrate_to_chat_id; await saveStore(); return; }
+  if (msg.migrate_to_chat_id && chat.id === t.chatId) {
+    t.chatId = msg.migrate_to_chat_id;
+    for (const q of store.questions) if (q.tg && q.tg.chatId === chat.id) q.tg.chatId = msg.migrate_to_chat_id;
+    await saveStore(); return;
+  }
   const text = msg.text || ''; if (!text) return;
   const start = text.match(/^\/start(?:@\w+)?(?:\s+(\S+))?/);
   if (start) {
@@ -334,14 +387,22 @@ async function tgHandle(u) {
     for (const q of open) await tgNotifyQuestion(q);
     return;
   }
-  const rid = msg.reply_to_message?.message_id; if (!rid) return;
-  const q = store.questions.find(x => x.tg && x.tg.chatId === chat.id && x.tg.messageId === rid);
-  if (!q) return;
+  const reply = msg.reply_to_message; if (!reply) return;
+  const rid = reply.message_id;
+  const q = store.questions.find(x => (x.tgMsgs || []).includes(rid) || x.tg?.messageId === rid || x.tgDraft?.msgId === rid);
+  if (!q) {
+    if (reply.from?.id === tgBot?.id) return tg('sendMessage', { chat_id: chat.id, reply_to_message_id: msg.message_id, allow_sending_without_reply: true, text: 'Не знайшов, до якого питання ця відповідь. Зробіть Reply саме на повідомлення «❓ Питання учасника» або надішліть /open, щоб побачити всі відкриті питання.' });
+    return;
+  }
+  if (text.startsWith('/')) return;
   const by = [msg.from?.first_name, msg.from?.last_name].filter(Boolean).join(' ') || 'Telegram';
   await tg('sendChatAction', { chat_id: chat.id, action: 'typing' });
-  const { q: done } = await answerQuestion(q, text, { by: 'telegram' });
-  done.answeredByName = by; await saveStore();
-  await tg('sendMessage', { chat_id: chat.id, reply_to_message_id: msg.message_id, allow_sending_without_reply: true, parse_mode: 'HTML', text: `✅ <b>Надіслано учаснику:</b>\n${tgEsc(done.final)}\n\n<i>Відповідь додано в базу знань Юніончика.</i>` });
+  const old = q.tgDraft; if (old?.msgId) tg('editMessageReplyMarkup', { chat_id: chat.id, message_id: old.msgId, reply_markup: { inline_keyboard: [] } });
+  const raw = str(text, 1500);
+  const r = await polishAnswer(q, raw, 0);
+  const d = { raw, text: r.text, level: r.level, by };
+  const sent = await tgSendKb({ chat_id: chat.id, reply_to_message_id: msg.message_id, allow_sending_without_reply: true, parse_mode: 'HTML', text: (q.status === 'answered' ? '<i>На це питання вже відповідали — нова відповідь замінить попередню.</i>\n' : '') + tgDraftText(q, d), reply_markup: tgKb(q, d.level) });
+  if (sent) { d.msgId = sent.message_id; q.tgDraft = d; await saveStore(); }
 }
 async function tgLoop() {
   if (!TG_TOKEN) return;
@@ -351,7 +412,7 @@ async function tgLoop() {
   console.log(`[tg] бот @${tgBot.username} працює`);
   let offset = tgState().offset || 0;
   for (;;) {
-    const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['message'] });
+    const ups = await tg('getUpdates', { offset, timeout: 25, allowed_updates: ['message', 'callback_query'] });
     if (!ups) { await sleep(5000); continue; }
     for (const up of ups) { offset = up.update_id + 1; try { await tgHandle(up); } catch (err) { console.error('[tg handle]', err.message); } }
     if (ups.length) { tgState().offset = offset; saveStore(); }
@@ -359,7 +420,7 @@ async function tgLoop() {
 }
 async function claudeOnce(system, user, maxTokens = 500) {
   if (!ANTHROPIC_API_KEY) return null;
-  const r = await fetch('https://api.anthropic.com/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }) }).catch(() => null);
+  const r = await fetch((process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com') + '/v1/messages', { method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' }, body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: maxTokens, system, messages: [{ role: 'user', content: user }] }) }).catch(() => null);
   if (!r || !r.ok) return null;
   const d = await r.json().catch(() => null);
   return d?.content?.map(c => c.text || '').join('').trim() || null;
@@ -467,7 +528,7 @@ async function handleAsk(req, res) {
   if (!q) return json(res, 400, { error: 'Порожнє запитання' });
   messages.push({ role: 'user', content: q });
   while (messages.length && messages[0].role !== 'user') messages.shift();
-  const upstream = await fetch('https://api.anthropic.com/v1/messages', {
+  const upstream = await fetch((process.env.ANTHROPIC_API_URL || 'https://api.anthropic.com') + '/v1/messages', {
     method: 'POST', headers: { 'content-type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
     body: JSON.stringify({ model: ANTHROPIC_MODEL, max_tokens: 700, stream: true, system: systemPrompt(me), messages })
   }).catch(() => null);
@@ -675,7 +736,7 @@ async function api(req, res, url) {
 
     if (col === 'telegram') {
       const t = tgState();
-      if (m === 'GET') return json(res, 200, { configured: Boolean(TG_TOKEN), bot: tgBot?.username || null, connected: Boolean(t.chatId), chatTitle: t.chatTitle || null,
+      if (m === 'GET') return json(res, 200, { configured: Boolean(TG_TOKEN), bot: tgBot?.username || null, connected: Boolean(t.chatId), chatTitle: t.chatTitle || null, lastUpdateAt: tgLastUpdate, lastError: tgLastError,
         linkGroup: tgBot ? `https://t.me/${tgBot.username}?startgroup=${t.linkCode}` : null, linkPrivate: tgBot ? `https://t.me/${tgBot.username}?start=${t.linkCode}` : null });
       if (m === 'POST' && id === 'test') { if (!t.chatId) throw fail(400, 'Telegram ще не підключено'); const r = await tg('sendMessage', { chat_id: t.chatId, text: 'Тест: сайт форуму на зв’язку. Питання учасників приходитимуть сюди.' }); if (!r) throw fail(502, 'Telegram не прийняв повідомлення'); return json(res, 200, { ok: true }); }
       if (m === 'POST' && id === 'unlink') { delete t.chatId; delete t.chatTitle; t.linkCode = crypto.randomBytes(6).toString('hex'); await saveStore(); return json(res, 200, { ok: true }); }
@@ -684,8 +745,13 @@ async function api(req, res, url) {
       const q = store.questions.find(x => x.id === id);
       if (!q) throw fail(404, 'Питання не знайдено');
       if (action === 'answer' && m === 'POST') {
-        const { q: done, push } = await answerQuestion(q, body.answer, { polish: body.polish !== false, addToKnowledge: body.addToKnowledge !== false, by: 'admin' });
+        const { q: done, push } = await answerQuestion(q, body.answer, { polish: body.polish !== false, final: body.final, addToKnowledge: body.addToKnowledge !== false, by: 'admin' });
         return json(res, 200, { ok: true, question: done, push });
+      }
+      if (action === 'preview' && m === 'POST') {
+        const raw = str(body.answer, 1500); if (!raw) throw fail(400, 'Напишіть відповідь');
+        const r = await polishAnswer(q, raw, body.level);
+        return json(res, 200, { ok: true, ...r, note: POLISH_NOTE[r.level] });
       }
       if (m === 'DELETE') { store.questions = store.questions.filter(x => x.id !== id); await saveStore(); return json(res, 200, { ok: true }); }
     }
