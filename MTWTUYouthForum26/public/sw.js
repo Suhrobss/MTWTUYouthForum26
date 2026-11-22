@@ -1,6 +1,6 @@
 // PLAI//OS service worker: offline shell + Web Push
-const CACHE = 'plai-v9';
-const SHELL = ['/', '/index.html', '/styles.css?v=9', '/app.js?v=9', '/icon.svg', '/manifest.webmanifest'];
+const CACHE = 'plai-v10';
+const SHELL = ['/', '/index.html', '/styles.css?v=10', '/app.js?v=10', '/icon.svg', '/manifest.webmanifest'];
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener('activate', e => { e.waitUntil(caches.keys().then(k => Promise.all(k.filter(x => x !== CACHE).map(x => caches.delete(x)))).then(() => self.clients.claim())); });
 self.addEventListener('fetch', e => {

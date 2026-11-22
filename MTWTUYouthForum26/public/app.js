@@ -194,7 +194,9 @@ const sortEv = list => [...list].sort((a, b) => a.date.localeCompare(b.date) || 
 const chapterOf = d => CHAPTERS.find(c => (CHAPTER_DAYS[c.id] || [c.id]).includes(d)) || CHAPTERS[0];
 const fmtDate = iso => { try { return new Intl.DateTimeFormat('uk-UA', { timeZone: 'Europe/Kyiv', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(new Date(iso)); } catch { return ''; } };
 const isMinor = e => !e.feature && !HIGHLIGHTS.includes(e.id);
-const forMe = e => !e.group || !S.me || S.me.group === e.group;
+const CATS = { participant: 'Учасник', guest: 'Запрошений гість', staff: 'Апарат', escort: 'Супровід' };
+const grpMine = e => !!S.me && (S.me.group === e.group || (e.group === 'guests' && S.me.category === 'guest'));
+const forMe = e => !e.group || !S.me || grpMine(e);
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 const ICON = {
@@ -286,7 +288,7 @@ function marks() {
 function liveState() {
   const { day, time } = kyivParts();
   const now = mins(time);
-  const list = sortEv(events().filter(e => e.status !== 'canceled' && (e.group ? S.me?.group === e.group : true)));
+  const list = sortEv(events().filter(e => e.status !== 'canceled' && (e.group ? grpMine(e) : true)));
   let current = null, next = null;
   for (const e of list) {
     const s = mins(e.start), en = endMins(e);
@@ -813,12 +815,19 @@ function myAgenda() {
   for (const e of events()) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   const items = [];
   const tr = me.transport;
-  if (me.group === 'kyiv') items.push({ date: '2026-12-06', time: '', title: 'Дорога з Києва до Одеси', sub: 'Розміщення в готелі Leomare (вул. Генуезька, 3б), о 22:30 спільний автобус до «Плаю». Деталі дороги з Києва уточнюються.', kind: 'travel' });
+  const isGuest = me.category === 'guest', mine = new Set(me.events || []), hostN = me.host?.n;
+  const roleSub = e => [e.venue, 'ви задіяні' + (me.role ? ` (${me.role})` : '')].filter(Boolean).join(' · ');
+  if (me.travel) items.push({ date: isGuest ? '2026-12-07' : '2026-12-06', time: '', title: 'Ваш доїзд', sub: me.travel, kind: 'travel' });
+  else if (me.group === 'kyiv') items.push({ date: '2026-12-06', time: '', title: 'Дорога з Києва до Одеси', sub: 'Учасники з Києва добираються до Одеси. Розміщення в готелі Leomare (вул. Генуезька, 3б), о 22:30 — спільний автобус до «Плаю» разом з усіма.', kind: 'travel' });
   for (const e of sortEv(events())) {
     if (e.status === 'canceled' || !forMe(e)) continue;
+    if (isGuest && !me.group && ['061', '062', '063', '105', '111', '113'].includes(e.id)) continue;
+    if (isGuest && e.id === '098') continue;
+    if (mine.has(e.id)) { items.push({ date: e.date, time: e.start || (e.end ? 'до ' + e.end : ''), title: e.title, sub: roleSub(e), kind: 'mine', link: '#/event/' + e.id }); continue; }
+    if (e.track === 'parallel' && e.start && slots.get(slotKeyOf(e))?.some(x => mine.has(x.id))) continue;
     if (me.group === 'kyiv' && ['061', '113'].includes(e.id)) continue;
     if (me.group === 'odesa' && ['061', '062', '113'].includes(e.id)) continue;
-    if (e.id === '098g') continue;
+    if (e.id === '098g' && !isGuest) continue;
     if (e.id === '063' && tr?.meet) { items.push({ date: e.date, time: e.start, title: e.title, sub: `Збір: ${tr.meet}`, kind: 'travel', link: '#/event/063' }); continue; }
     if (e.track === 'parallel' && e.start) {
       const k = slotKeyOf(e); const chosen = me.sessions?.[k];
@@ -826,7 +835,7 @@ function myAgenda() {
       if (!chosen) { if (slots.get(k)[0].id !== e.id) continue; items.push({ date: e.date, time: e.start, title: 'Оберіть паралельну сесію', sub: slots.get(k).map(x => x.title).join(' або '), kind: 'choose', link: '#/event/' + e.id }); continue; }
       items.push({ date: e.date, time: e.start, title: e.title, sub: `${e.venue || ''} · ваша сесія`, kind: 'mine', link: '#/event/' + e.id }); continue;
     }
-    items.push({ date: e.date, time: e.start || (e.end ? 'до ' + e.end : ''), title: e.title, sub: e.unionize && me.table ? `${e.venue} · стіл ${me.table}, місце ${me.seat}` : (e.venue || ''), kind: isMinor(e) ? 'minor' : 'main', link: '#/event/' + e.id });
+    items.push({ date: e.date, time: e.start || (e.end ? 'до ' + e.end : ''), title: e.title, sub: e.unionize && hostN ? `${e.venue} · ви ведете стіл ${hostN}` : e.unionize && me.table ? `${e.venue} · стіл ${me.table}, місце ${me.seat}` : (e.venue || ''), kind: e.unionize && hostN ? 'mine' : isMinor(e) ? 'minor' : 'main', link: '#/event/' + e.id });
   }
   const days = [...new Set(items.map(i => i.date))];
   const dayName = { '2026-12-06': 'Неділя', '2026-12-11': 'П’ятниця', ...WEEKDAY };
@@ -838,8 +847,8 @@ function viewMe() {
   ${pageHead(T('page.me.k'), esc(T('page.me.t')), T('page.me.l'))}
   <section class="wrap"><form class="tile login" id="code-form">
     <span class="kicker">${ic('lock')} ВХІД ЗА КОДОМ</span><h3>Введіть персональний код</h3>
-    <p>Код виглядає як <b>PLAI-XXXX</b>. Ви отримаєте його від організаторів посиланням або QR-кодом на бейджі.</p>
-    <label class="field"><span>Персональний код</span><input name="code" autocomplete="one-time-code" autocapitalize="characters" placeholder="PLAI-____" required></label>
+    <p>Персональний код ви отримаєте від організаторів посиланням або QR-кодом на бейджі. Зазвичай він виглядає як <b>PLAI-XXXX</b>.</p>
+    <label class="field"><span>Персональний код</span><input name="code" autocomplete="one-time-code" autocapitalize="characters" placeholder="Ваш код" required></label>
     <button class="btn btn-lift full" type="submit">Увійти ${ic('arrow')}</button>
     <p class="fine">Немає коду? Напишіть організаторам або <a href="#/ask">запитайте Юніончика</a>.</p>
   </form></section>${footer()}`;
@@ -847,19 +856,31 @@ function viewMe() {
   const slots = new Map();
   for (const e of sortEv(events())) if (e.track === 'parallel' && e.start) { const k = slotKeyOf(e); if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   const qs = me.questions || [];
+  const isGuest = me.category === 'guest';
+  const uni8 = evById('088');
+  const myEvs = sortEv((me.events || []).map(evById).filter(Boolean));
+  const duties = String(me.duties || '').split('\n').map(x => x.trim()).filter(Boolean);
+  const hasRole = me.role || duties.length || myEvs.length || me.host;
   return `
-  ${pageHead(T('page.me.k'), `Привіт, ${esc(me.name.split(' ')[0] || me.name)}.`, T('page.me.l2'))}
+  ${pageHead(T('page.me.k'), `Привіт, ${esc(me.name.split(' ')[0] || me.name)}.`, T('page.me.l2'), `<div class="me-tags"><span class="tag cat-${esc(me.category || 'participant')}">${esc(me.categoryLabel || 'Учасник')}</span>${me.role ? `<span class="tag">${esc(me.role)}</span>` : ''}</div>`)}
+  ${hasRole ? `<div class="wrap"><article class="tile tile-ink me-role"><span class="kicker kicker-inv">${ic('star')} МОЯ РОЛЬ НА ФОРУМІ</span>
+    <h3>${esc(me.role || me.categoryLabel || 'Учасник')}</h3>
+    ${me.host ? `<div class="me-host"><b>Ви ведете стіл №${me.host.n}</b><span>Гра Unionize${uni8 ? ` · ${esc(uni8.date.slice(8))}.12, ${esc(formatRange(uni8))}${uni8.venue ? ', ' + esc(uni8.venue) : ''}` : ''}</span>
+      <p>${me.host.seated.length ? `За вашим столом (${me.host.seated.length}): ${me.host.seated.map(n => esc(n.name)).join(', ')}` : 'Учасників за ваш стіл ще не посадили — список з’явиться тут.'}</p></div>` : ''}
+    ${duties.length ? `<ul class="me-duties">${duties.map(x => `<li>${esc(x)}</li>`).join('')}</ul>` : ''}
+    ${myEvs.length ? `<div class="me-evs"><small>ВИ ЗАДІЯНІ В ПОДІЯХ</small>${myEvs.map(e => `<a href="#/event/${esc(e.id)}"><b>${esc(e.date.slice(8))}.12 · ${esc(formatRange(e))}</b><span>${esc(e.title)}</span>${ic('arrow')}</a>`).join('')}</div>` : ''}
+  </article></div>` : ''}
   <div class="wrap me-grid">
-    <article class="tile"><span class="kicker">${ic('bus')} ГРУПА ДОЇЗДУ</span><h3>${esc(me.transport?.title || 'Уточнюється')}</h3>
-      <p>${esc(me.transport?.note || 'Організатори вкажуть вашу групу.')}</p><p class="meet"><b>Збір:</b> ${me.transport?.meet ? esc(me.transport.meet) : 'точка і час збору уточнюються'}</p></article>
-    <article class="tile"><span class="kicker">${ic('users')} UNIONIZE</span><h3>${me.table ? `Стіл ${me.table} · місце ${me.seat}` : 'Місце ще не призначене'}</h3>
-      ${me.table ? `<p>Ведучий: ${esc(me.tableInfo?.host || 'уточнюється')}${me.table === 1 ? ` · ${esc(me.tableInfo?.label || 'керівництво та гості')}` : ''}</p>${me.neighbours.length ? `<p class="fine">За столом: ${me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}` : '<p>Розсадку опублікують організатори.</p>'}
+    <article class="tile"><span class="kicker">${ic(isGuest && !me.transport ? 'compass' : 'bus')} ${me.travel ? 'ВАШ ДОЇЗД' : 'ГРУПА ДОЇЗДУ'}</span><h3>${esc(me.travel ? (me.transport?.title || (isGuest ? 'Автомобілем' : 'Особистий маршрут')) : me.transport?.title || (isGuest ? 'Автомобілем' : 'Уточнюється'))}</h3>
+      <p>${esc(me.travel || me.transport?.note || (isGuest ? 'Запрошені гості добираються до «Плаю» автомобілем. Деталі — в особистому розкладі нижче.' : 'Організатори вкажуть вашу групу.'))}</p>${me.transport ? `<p class="meet"><b>Збір:</b> ${me.transport.meet ? esc(me.transport.meet) : 'точка і час збору уточнюються'}</p>` : ''}</article>
+    <article class="tile"><span class="kicker">${ic('users')} UNIONIZE</span>${me.host && !me.table ? `<h3>Ви ведете стіл ${me.host.n}</h3><p>${me.host.seated.length ? `За столом: ${me.host.seated.map(n => esc(n.name)).join(', ')}` : 'Розсадку опублікують організатори.'}</p>` : `<h3>${me.table ? `Стіл ${me.table} · місце ${me.seat}` : 'Місце ще не призначене'}</h3>
+      ${me.table ? `<p>Ведучий: ${esc(me.tableInfo?.host || 'уточнюється')}${me.table === 1 ? ` · ${esc(me.tableInfo?.label || 'керівництво та гості')}` : ''}</p>${me.neighbours.length ? `<p class="fine">За столом: ${me.neighbours.map(n => esc(n.name)).join(', ')}</p>` : ''}` : '<p>Розсадку опублікують організатори.</p>'}`}
       <a class="link" href="#/event/088">Схема залу ${ic('arrow')}</a></article>
     ${me.team || me.room ? `<article class="tile"><span class="kicker">${ic('info')} ДЕТАЛІ</span>${me.team ? `<h3>Команда: ${esc(me.team)}</h3>` : ''}${me.room ? `<p>Кімната: ${esc(me.room)}</p>` : ''}</article>` : ''}
   </div>
-  <section class="wrap sec"><div class="sec-head"><span class="kicker">ПАРАЛЕЛЬНІ СЕСІЇ</span><h2>Ваш вибір.</h2><p>По 25 місць у кожній сесії. Запис відкритий до початку сесії, але місця закінчуються — записуйтесь швидше.</p></div>
+  ${slots.size ? `<section class="wrap sec"><div class="sec-head"><span class="kicker">ПАРАЛЕЛЬНІ СЕСІЇ</span><h2>Ваш вибір.</h2><p>По 25 місць у кожній сесії. Запис відкритий до початку сесії, але місця закінчуються — записуйтесь швидше.</p></div>
     ${[...slots].map(([k, g]) => `<div class="me-slot"><h3>${esc(k.slice(8, 10))} грудня · ${esc(k.slice(11))}</h3>${sessionBar(k, g)}</div>`).join('')}
-  </section>
+  </section>` : ''}
   <section class="wrap sec"><div class="sec-head"><span class="kicker">МІЙ ДЕНЬ</span><h2>Особистий розклад.</h2><p>Спільна програма разом із вашими сесіями, місцем і доїздом.</p></div>
     <div class="agenda">${myAgenda()}</div></section>
   <section class="wrap sec"><div class="sec-head"><span class="kicker">ПИТАННЯ</span><h2>Мої питання організаторам.</h2></div>
@@ -1099,17 +1120,22 @@ function adminAnnouncements(d) {
 }
 function adminParticipants(d) {
   const evTitle = id => d.events.find(e => e.id === id)?.title || '';
-  const list = [...d.participants].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+  const cat = S.admin.pcat || 'all';
+  const all = [...d.participants].sort((a, b) => a.name.localeCompare(b.name, 'uk'));
+  const list = cat === 'all' ? all : all.filter(p => (p.category || 'participant') === cat);
+  const hostOf = p => p.hostTable || d.unionize.tables.find(t => t.host && p.name && t.host.toLowerCase().includes(p.name.toLowerCase()))?.n;
   return `<div class="admin-2">
     <form class="tile" id="import-form"><span class="kicker">${ic('download')} ІМПОРТ СПИСКУ</span><h3>Вставте таблицю</h3>
-      <p class="fine">Скопіюйте стовпці з Excel або Google Таблиці: <b>ім’я · група доїзду (Ізмаїл / Одеса / Київ) · стіл (1–9) · команда · кімната</b>. Перший рядок може бути заголовком. Учасник з тим самим ім’ям оновиться, а не задублюється.</p>
-      <label class="field"><span>Дані</span><textarea name="csv" rows="7" placeholder="Ім’я;Група;Стіл;Команда&#10;Іван Петренко;Одеса;3;Чорноморськ"></textarea></label>
+      <p class="fine">Скопіюйте стовпці з Excel або Google Таблиці: <b>ім’я · група доїзду (Ізмаїл / Одеса / Київ) · стіл (1–9) · команда · кімната · категорія (учасник / запрошені / апарат / супровід) · посада</b>. Можна додати стовпець «Код», щоб задати власні коди — тоді перший рядок має бути заголовком. Людина з тим самим ім’ям оновиться, а не задублюється.</p>
+      <label class="field"><span>Дані</span><textarea name="csv" rows="7" placeholder="Ім’я;Група;Стіл;Команда;Кімната;Категорія;Посада&#10;Іван Петренко;Одеса;3;Чорноморськ;;учасник;"></textarea></label>
       <button class="btn btn-lift full" type="submit">Імпортувати</button></form>
-    <div class="tile"><span class="kicker">${ic('users')} УЧАСНИКИ · ${list.length}</span>
+    <div class="tile"><span class="kicker">${ic('users')} ЛЮДИ ФОРУМУ · ${all.length}</span>
+      <div class="filters pcat">${[['all', 'Усі'], ...Object.entries(CATS)].map(([k, l]) => `<button class="chip ${cat === k ? 'on' : ''}" data-pcat="${k}">${l} <span class="count">${k === 'all' ? all.length : all.filter(p => (p.category || 'participant') === k).length}</span></button>`).join('')}</div>
+      <label class="field"><span class="sr">Пошук</span><input type="search" id="p-search" placeholder="Пошук за ім’ям, кодом, посадою…"></label>
       <div class="row-btns"><button class="btn btn-ghost" data-edit-p="new">${ic('plus')} Додати</button>${list.length ? `<button class="btn btn-ghost" data-act="export-codes">${ic('download')} Коди й посилання (CSV)</button>` : ''}</div>
-      ${list.map(p => `<div class="adm-row"><div><b>${esc(p.name)}</b><small>${esc(p.code)} · ${esc(GROUP_NAME(p.group))} · ${p.table ? `стіл ${p.table}, місце ${p.seat}` : 'без столу'}${p.team ? ' · ' + esc(p.team) : ''}</small>
+      ${list.map(p => `<div class="adm-row p-row" data-p="${esc([p.name, p.code, p.role, p.team].join(' ').toLowerCase())}"><div><b>${esc(p.name)} <span class="cat cat-${esc(p.category || 'participant')}">${esc(CATS[p.category] || CATS.participant)}</span></b>${p.role ? `<small>${esc(p.role)}</small>` : ''}<small>${esc(p.code)} · ${p.travel ? 'особистий доїзд' : esc(GROUP_NAME(p.group))} · ${p.table ? `стіл ${p.table}, місце ${p.seat}` : 'без столу'}${hostOf(p) ? ` · ведучий столу ${hostOf(p)}` : ''}${p.team ? ' · ' + esc(p.team) : ''}${p.events?.length ? ` · задіяний у ${p.events.length} под.` : ''}</small>
         <small>${Object.values(p.sessions || {}).map(evTitle).filter(Boolean).map(esc).join(' · ') || 'Сесії не обрані'}${p.lastLogin ? ' · заходив(ла)' : ''}</small></div>
-        <div class="adm-acts"><button class="icon-btn" data-copy="${esc(meLink(p.code))}" aria-label="Копіювати посилання для ${esc(p.name)}">${ic('share')}</button><button class="icon-btn" data-edit-p="${esc(p.id)}" aria-label="Редагувати ${esc(p.name)}">${ic('edit')}</button></div></div>`).join('') || '<p>Список порожній.</p>'}
+        <div class="adm-acts"><button class="icon-btn" data-copy="${esc(meLink(p.code))}" aria-label="Копіювати посилання для ${esc(p.name)}">${ic('share')}</button><button class="icon-btn" data-edit-p="${esc(p.id)}" aria-label="Редагувати ${esc(p.name)}">${ic('edit')}</button></div></div>`).join('') || '<p>Нікого немає в цій категорії.</p>'}
     </div></div>`;
 }
 function adminUnionize(d) {
@@ -1189,15 +1215,27 @@ function openEditor(id) {
 }
 function openParticipant(id) {
   const d = S.admin.data;
-  const p = id === 'new' ? { id: '', name: '', group: '', table: '', team: '', room: '', sessions: {} } : d.participants.find(x => x.id === id);
+  const p = id === 'new' ? { id: '', name: '', code: '', category: S.admin.pcat && S.admin.pcat !== 'all' ? S.admin.pcat : 'participant', role: '', group: '', table: '', hostTable: '', team: '', room: '', travel: '', duties: '', events: [], sessions: {} } : d.participants.find(x => x.id === id);
+  const evSet = new Set(p.events || []);
+  const evDays = [...new Set(sortEv(d.events).map(e => e.date))];
   const slots = new Map();
   for (const e of sortEv(d.events)) if (e.track === 'parallel' && e.start && e.published !== false) { const k = e.date + ' ' + e.start; if (!slots.has(k)) slots.set(k, []); slots.get(k).push(e); }
   openDialog(`<form id="participant-form" data-id="${esc(p.id || 'new')}" class="editor-body">${dlgHead(p.id ? esc(p.name) : 'Новий учасник')}
     ${p.id ? `<div class="bar bar-info">${ic('lock')}<span>Код <b>${esc(p.code)}</b> · <button type="button" class="link" data-copy="${esc(meLink(p.code))}">копіювати посилання</button> · <button type="button" class="link" data-newcode="${esc(p.id)}">новий код</button></span></div>` : ''}
     <label class="field"><span>Ім’я та прізвище</span><input name="name" value="${esc(p.name)}" required maxlength="80"></label>
+    <div class="two-col"><label class="field"><span>Категорія</span><select name="category">${Object.entries(CATS).map(([k, l]) => `<option value="${k}" ${(p.category || 'participant') === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="field"><span>Посада / функція</span><input name="role" value="${esc(p.role || '')}" maxlength="140" placeholder="Наприклад: Голова ПРМТУ, фотограф, модератор"></label></div>
+    <label class="field"><span>Персональний код</span><input name="code" value="${esc(p.code || '')}" maxlength="24" autocapitalize="characters" spellcheck="false" placeholder="Порожньо — згенерується автоматично"><small>Латинські літери та цифри, 4–24 символи (наприклад, OLEG2026). Код має бути унікальним; старий перестане працювати.</small></label>
     <div class="two-col"><label class="field"><span>Група доїзду</span><select name="group"><option value="">—</option>${d.transport.map(t => `<option value="${t.key}" ${p.group === t.key ? 'selected' : ''}>${esc(t.title)}</option>`).join('')}</select></label>
     <label class="field"><span>Стіл Unionize</span><select name="table"><option value="">—</option>${d.unionize.tables.map(t => `<option value="${t.n}" ${p.table === t.n ? 'selected' : ''}>Стіл ${t.n}${t.n === 1 ? ' (керівництво та гості)' : ''}</option>`).join('')}</select></label></div>
-    <div class="two-col"><label class="field"><span>Команда</span><input name="team" value="${esc(p.team || '')}" maxlength="60"></label><label class="field"><span>Кімната</span><input name="room" value="${esc(p.room || '')}" maxlength="20"></label></div>
+    <div class="two-col"><label class="field"><span>Ведучий столу Unionize</span><select name="hostTable"><option value="">— не ведучий</option>${d.unionize.tables.map(t => `<option value="${t.n}" ${p.hostTable === t.n ? 'selected' : ''}>Стіл ${t.n}${t.host ? ' · зараз: ' + esc(t.host) : ''}</option>`).join('')}</select></label>
+    <label class="field"><span>Команда</span><input name="team" value="${esc(p.team || '')}" maxlength="60"></label></div>
+    <label class="field"><span>Кімната</span><input name="room" value="${esc(p.room || '')}" maxlength="20"></label>
+    <label class="field"><span>Особистий доїзд</span><textarea name="travel" rows="2" maxlength="600" placeholder="Якщо відрізняється від групи: наприклад, «Автомобілем з Києва 7 грудня о 07:00»">${esc(p.travel || '')}</textarea><small>Порожньо — показується інформація групи доїзду.</small></label>
+    <label class="field"><span>Де задіяний / обов’язки</span><textarea name="duties" rows="3" maxlength="1500" placeholder="Кожен пункт з нового рядка: «8.12 — фотозйомка відкриття», «Відповідає за реєстрацію»">${esc(p.duties || '')}</textarea><small>Людина побачить це у «Мій форум» у блоці «Моя роль на форумі».</small></label>
+    <details class="ev-pick" ${evSet.size ? 'open' : ''}><summary>Задіяний у подіях (виступає, модерує, допомагає) · <b data-evcount>${evSet.size}</b></summary>
+      ${evDays.map(day => `<fieldset><legend>${day.slice(8)}.12</legend>${sortEv(d.events.filter(e => e.date === day)).map(e => `<label class="check"><input type="checkbox" name="ev" value="${esc(e.id)}" ${evSet.has(e.id) ? 'checked' : ''}> ${esc(e.start || '')} ${esc(e.title)}</label>`).join('')}</fieldset>`).join('')}
+    </details>
     ${[...slots].map(([k, g]) => `<label class="field"><span>Сесія ${k.slice(8, 10)}.12, ${k.slice(11)}</span><select name="sess|${k}"><option value="">не обрано</option>${g.map(e => `<option value="${e.id}" ${p.sessions?.[k] === e.id ? 'selected' : ''}>${esc(e.title)}</option>`).join('')}</select></label>`).join('')}
     <div class="row-btns"><button class="btn btn-lift" type="submit">Зберегти</button>${p.id ? `<button class="btn btn-ghost" type="button" data-del-p="${esc(p.id)}">${ic('trash')} Видалити</button>` : ''}</div>
   </form>`);
@@ -1382,6 +1420,7 @@ document.addEventListener('click', async ev => {
     if (d.copy) { ev.preventDefault(); try { await navigator.clipboard.writeText(d.copy); toast('Посилання скопійовано'); } catch { toast(d.copy); } return; }
     /* admin */
     if (d.atab) { S.admin.tab = d.atab; rerender(); return; }
+    if (d.pcat) { S.admin.pcat = d.pcat; rerender(); return; }
     if (d.txReset) { const el = t.closest('form')?.elements[d.txReset]; if (el) { el.value = TXD[d.txReset] ?? ''; el.dispatchEvent(new Event('input', { bubbles: true })); toast('Початковий текст повернено — натисніть «Зберегти тексти»'); } return; }
     if (d.edit) { openEditor(d.edit); return; }
     if (d.editP) { openParticipant(d.editP); return; }
@@ -1405,7 +1444,7 @@ document.addEventListener('click', async ev => {
       case 'tg-test': await api('/api/admin/telegram/test', { method: 'POST' }).then(() => toast('Тест надіслано в Telegram')).catch(e => toast(e.message)); break;
       case 'tg-unlink': if (!confirm('Відключити Telegram-групу?')) break; await api('/api/admin/telegram/unlink', { method: 'POST' }); await loadAdmin(); break;
       case 'export-codes': {
-        const rows = [['Ім’я', 'Код', 'Посилання', 'Група', 'Стіл', 'Місце'], ...S.admin.data.participants.map(p => [p.name, p.code, meLink(p.code), GROUP_NAME(p.group), p.table || '', p.seat || ''])];
+        const rows = [['Ім’я', 'Категорія', 'Посада', 'Код', 'Посилання', 'Група', 'Стіл', 'Місце', 'Ведучий столу'], ...S.admin.data.participants.map(p => [p.name, CATS[p.category] || CATS.participant, p.role || '', p.code, meLink(p.code), GROUP_NAME(p.group), p.table || '', p.seat || '', p.hostTable || ''])];
         const csv = '﻿' + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
         const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8' })), download: 'MTWTU-forum-codes.csv' });
         document.body.append(a); a.click(); a.remove(); break;
@@ -1428,7 +1467,7 @@ document.addEventListener('submit', async ev => {
     if (f.id === 'participant-form') {
       const id = f.dataset.id, sessions = {};
       for (const [k, v] of fd.entries()) if (k.startsWith('sess|')) sessions[k.slice(5)] = v;
-      const body = { name: data.name, group: data.group, table: data.table, team: data.team, room: data.room, sessions };
+      const body = { name: data.name, category: data.category, role: data.role, code: data.code, group: data.group, table: data.table, hostTable: data.hostTable, team: data.team, room: data.room, travel: data.travel, duties: data.duties, events: fd.getAll('ev'), sessions };
       await api(id === 'new' ? '/api/admin/participants' : '/api/admin/participants/' + id, { method: id === 'new' ? 'POST' : 'PUT', body: JSON.stringify(body) });
       $('#editor').close(); toast('Збережено'); await loadAdmin(); load(); return;
     }
@@ -1459,6 +1498,8 @@ document.addEventListener('submit', async ev => {
     }
   } catch (e) { toast(e.message); const b = f.querySelector('[type=submit][disabled]'); if (b) { b.disabled = false; } }
 });
+document.addEventListener('input', e => { if (e.target.id === 'p-search') { const q = e.target.value.trim().toLowerCase(); $$('.p-row').forEach(r => { r.hidden = q && !r.dataset.p.includes(q); }); } });
+document.addEventListener('change', e => { if (e.target.name === 'ev') { const c = $('[data-evcount]'); if (c) c.textContent = $$('#participant-form [name=ev]:checked').length; } });
 document.addEventListener('input', e => { if (e.target.id !== 'tx-search') return; const q = e.target.value.trim().toLowerCase(); $$('#texts-form .tx-field').forEach(f => { f.hidden = q && !f.dataset.tx.includes(q); }); $$('#texts-form .tx-group').forEach(g => { if (q) g.open = [...g.querySelectorAll('.tx-field')].some(f => !f.hidden); g.hidden = q && ![...g.querySelectorAll('.tx-field')].some(f => !f.hidden); }); });
 document.addEventListener('input', e => { if (e.target.id === 'ask-input') { if (!S.asking) { S.uniAwake = true; const v = e.target.value.trim(); if (/дяку|спасиб|thank/i.test(v)) setUni('love'); else if (/[?!]{2,}|!$/.test(v)) setUni('wow'); else setUni(v ? 'listen' : 'idle'); } e.target.style.height = 'auto'; e.target.style.height = Math.min(e.target.scrollHeight, 160) + 'px'; } });
 document.addEventListener('focusin', e => { if (e.target.id === 'ask-input') document.querySelectorAll('[data-uni-live]').forEach(el => { el.style.setProperty('--lx', '0px'); el.style.setProperty('--ly', '5px'); }); });
